@@ -1,0 +1,7 @@
+databaseChangeLog:
+  - include:
+      file: migrations/001-create-orders.yml
+      relativeToChangelogFile: true
+  - include:
+      file: migrations/002-audit-log-publication.yml
+      relativeToChangelogFile: true
