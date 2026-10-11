@@ -1,0 +1,36 @@
+# Профиль grpc-tls: взаимный TLS на gRPC — и на сервере заказов, и на каналах к каталогу
+# и сервису пользователей. Включается в docker-compose; при запуске из IDE выключен,
+# см. GrpcSecurityConfig.
+spring:
+  ssl:
+    bundle:
+      pem:
+        grpc:
+          keystore:
+            certificate: ${GRPC_TLS_CERTIFICATE}
+            private-key: ${GRPC_TLS_PRIVATE_KEY}
+          truststore:
+            certificate: ${GRPC_TLS_CA}
+  grpc:
+    server:
+      ssl:
+        enabled: true
+        bundle: grpc
+        client-auth: require
+    client:
+      channels:
+        catalog:
+          negotiation-type: tls
+          ssl:
+            bundle: grpc
+        identity:
+          negotiation-type: tls
+          ssl:
+            bundle: grpc
+
+app:
+  grpc:
+    security:
+      mtls: true
+      # Заказы и доставки читает монолит: отзывы, рекомендации и трек курьера.
+      allowed-clients: core

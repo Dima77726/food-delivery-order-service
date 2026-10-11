@@ -1,0 +1,120 @@
+spring:
+  application:
+    name: order-service
+
+  lifecycle:
+    # Согласовано с stop_grace_period в docker-compose.yml.
+    timeout-per-shutdown-phase: 20s
+
+  datasource:
+    # Своя база заказов (database-per-service): корзины, заказы, доставки, их история и outbox.
+    url: jdbc:postgresql://${ORDER_DB_HOST:localhost}:${ORDER_DB_PORT:5432}/${ORDER_DB_NAME:orders}
+    username: ${ORDER_DB_USER}
+    password: ${ORDER_DB_PASSWORD}
+    hikari:
+      # Соединения держат веб-потоки, слушатель Kafka, публикатор outbox и задача таймаутов оплаты.
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      minimum-idle: ${DB_POOL_SIZE:10}
+      connection-timeout: 3000
+      leak-detection-threshold: 20000
+
+  liquibase:
+    change-log: classpath:/db/changelog/changelog.yml
+
+  grpc:
+    server:
+      # Чтение заказов и доставок для монолита. По умолчанию — для запуска из IDE,
+      # в docker-compose переопределяется на 9090.
+      port: ${GRPC_PORT:7086}
+    client:
+      channels:
+        # Каталог: корзина спрашивает у него ресторан и блюдо.
+        catalog:
+          address: ${CATALOG_GRPC_ADDRESS:static://localhost:7084}
+          negotiation-type: plaintext
+        # Сервис пользователей: права на ресторан для заказов ресторана и доставки.
+        identity:
+          address: ${IDENTITY_GRPC_ADDRESS:static://localhost:7085}
+          negotiation-type: plaintext
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9094}
+
+    producer:
+      # Потеря команды «спиши» или события заказа недопустима: подтверждение от всех реплик
+      # и идемпотентный продюсер — см. пояснения в application.yml монолита в истории git.
+      acks: all
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+
+    consumer:
+      # Своя группа: исходы платежей читает только сервис заказов.
+      group-id: ${KAFKA_CONSUMER_GROUP:order-service}
+      auto-offset-reset: earliest
+      properties:
+        max.poll.records: 50
+
+    listener:
+      ack-mode: record
+
+app:
+  grpc:
+    catalog:
+      deadline: ${CATALOG_GRPC_DEADLINE:PT2S}
+    identity:
+      deadline: ${IDENTITY_GRPC_DEADLINE:PT2S}
+
+  outbox:
+    publish-interval: ${OUTBOX_PUBLISH_INTERVAL:PT2S}
+    publish-enabled: ${OUTBOX_PUBLISH_ENABLED:true}
+
+  saga:
+    # Сколько заказ может ждать оплаты — и в статусе CREATED, и в PAYMENT_PENDING. По истечении
+    # заказ отменяется, а если оплату уже запросили — сервису платежей уходит команда на возврат.
+    payment-timeout: ${PAYMENT_TIMEOUT:PT15M}
+    timeout-check-interval: ${PAYMENT_TIMEOUT_CHECK_INTERVAL:PT1M}
+    timeout-check-enabled: ${PAYMENT_TIMEOUT_CHECK_ENABLED:true}
+
+  security:
+    jwt:
+      issuer: ${JWT_ISSUER:food-delivery-platform}
+      jwk-set-uri: ${JWT_JWK_SET_URI:http://localhost:8085/.well-known/jwks.json}
+
+management:
+  server:
+    port: ${MANAGEMENT_PORT:9086}
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+
+server:
+  port: ${SERVER_PORT:8086}
+  shutdown: graceful
+
+logging:
+  pattern:
+    correlation: "[${spring.application.name:},%X{correlationId:-},%X{userId:-}] "
+  level:
+    root: INFO
+    com.dima.fooddelivery: DEBUG
