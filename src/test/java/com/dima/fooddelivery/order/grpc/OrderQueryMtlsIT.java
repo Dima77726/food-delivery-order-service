@@ -10,6 +10,8 @@ import io.grpc.netty.GrpcSslContexts;
 import io.grpc.netty.NettyChannelBuilder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.boot.grpc.test.autoconfigure.LocalGrpcPort;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.test.context.ActiveProfiles;
@@ -29,8 +31,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 /**
  * gRPC-сервер заказов под взаимным TLS — так, как он работает в compose.
  *
- * <p>Монолит ({@code CN=core}) допущен: ответ на несуществующий заказ — NOT_FOUND, то есть
- * запрос дошёл до кода сервиса. Посторонний с подлинным сертификатом того же CA получает
+ * <p>Монолит ({@code CN=core}) и сервис трека допущены: ответ на несуществующий заказ —
+ * NOT_FOUND, то есть запрос дошёл до кода сервиса. Посторонний с подлинным сертификатом того же CA получает
  * PERMISSION_DENIED. Сертификаты — тестовые, из {@code src/test/resources/grpc-tls}.
  */
 @ActiveProfiles("grpc-tls")
@@ -52,14 +54,15 @@ class OrderQueryMtlsIT extends AbstractIntegrationTest {
         channels.forEach(ManagedChannel::shutdownNow);
     }
 
-    @Test
-    void shouldServeMonolith() {
+    @ParameterizedTest
+    @ValueSource(strings = {"core", "tracking-service"})
+    void shouldServeAllowedServices(String service) {
         StatusRuntimeException error = assertThrows(
                 StatusRuntimeException.class,
-                () -> ordersAs("core").getOrder(unknownOrder())
+                () -> ordersAs(service).getOrder(unknownOrder())
         );
 
-        assertEquals(Status.Code.NOT_FOUND, error.getStatus().getCode(), "запрос монолита обязан дойти до сервиса");
+        assertEquals(Status.Code.NOT_FOUND, error.getStatus().getCode(), "запрос обязан дойти до сервиса");
     }
 
     @Test
