@@ -25,6 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
         // Публикацию outbox тесты запускают сами, когда им нужно: с работающим таймером
         // момент отправки был бы неизвестен, и проверки состояния очереди стали бы гонкой.
         "app.outbox.publish-enabled=false",
+        // То же для отправки журнала аудита.
+        "app.audit.publish-enabled=false",
         // Таймауты оплаты тесты тоже запускают сами: фоновая отмена заказов посреди теста
         // была бы гонкой с его проверками.
         "app.saga.timeout-check-enabled=false",

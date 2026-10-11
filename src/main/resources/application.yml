@@ -12,7 +12,7 @@ spring:
     username: ${ORDER_DB_USER}
     password: ${ORDER_DB_PASSWORD}
     hikari:
-      # Соединения держат веб-потоки, слушатель Kafka, публикатор outbox и задача таймаутов оплаты.
+      # Соединения держат веб-потоки, слушатель Kafka, публикаторы outbox и журнала аудита и задача таймаутов оплаты.
       maximum-pool-size: ${DB_POOL_SIZE:10}
       minimum-idle: ${DB_POOL_SIZE:10}
       connection-timeout: 3000
@@ -68,6 +68,12 @@ app:
   outbox:
     publish-interval: ${OUTBOX_PUBLISH_INTERVAL:PT2S}
     publish-enabled: ${OUTBOX_PUBLISH_ENABLED:true}
+
+  audit:
+    # Журнал аудита уезжает в сводный журнал insights-service. Спешить некуда: администратор
+    # смотрит журнал не в реальном времени, а пачка раз в несколько секунд дешевле.
+    publish-interval: ${AUDIT_PUBLISH_INTERVAL:PT5S}
+    publish-enabled: ${AUDIT_PUBLISH_ENABLED:true}
 
   saga:
     # Сколько заказ может ждать оплаты — и в статусе CREATED, и в PAYMENT_PENDING. По истечении

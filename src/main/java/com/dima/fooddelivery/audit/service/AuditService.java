@@ -1,6 +1,5 @@
 package com.dima.fooddelivery.audit.service;
 
-import com.dima.fooddelivery.audit.domain.AuditEntry;
 import com.dima.fooddelivery.audit.domain.AuditOutcome;
 import com.dima.fooddelivery.audit.persistence.AuditLogRepository;
 import com.dima.fooddelivery.common.security.CurrentUser;
@@ -10,14 +9,16 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-
 /**
  * Модуль Audit.
  *
  * <p>Записывает, кто и что сделал. Актора берёт из контекста безопасности сам, чтобы
  * вызывающий код не передавал его руками — переданный вручную идентификатор рано или поздно
  * оказывается не тем.
+ *
+ * <p>Читать журнал отсюда больше некому: администратор смотрит сводный журнал в
+ * insights-service, куда записи уезжают через {@link AuditPublisher}. Таблица здесь —
+ * источник истины и очередь на отправку, а не витрина.
  */
 @Slf4j
 @Service
@@ -58,20 +59,5 @@ public class AuditService {
 
     public void recordFailure(String action, String resourceType, String resourceId, String details) {
         record(action, resourceType, resourceId, AuditOutcome.FAILURE, details);
-    }
-
-    @Transactional(readOnly = true)
-    public List<AuditEntry> getRecent(int limit) {
-        return auditLogRepository.findRecent(limit);
-    }
-
-    @Transactional(readOnly = true)
-    public List<AuditEntry> getByActor(Long actorId, int limit) {
-        return auditLogRepository.findByActor(actorId, limit);
-    }
-
-    @Transactional(readOnly = true)
-    public List<AuditEntry> getByResource(String resourceType, String resourceId, int limit) {
-        return auditLogRepository.findByResource(resourceType, resourceId, limit);
     }
 }

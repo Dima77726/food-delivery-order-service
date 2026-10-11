@@ -55,6 +55,15 @@ public class KafkaConfig {
                 .build();
     }
 
+    /** Журнал аудита для insights-service. Ключ — ресурс, поэтому партиций тоже три. */
+    @Bean
+    NewTopic auditEventsTopic() {
+        return TopicBuilder.name(KafkaTopics.AUDIT_EVENTS)
+                .partitions(3)
+                .replicas(1)
+                .build();
+    }
+
     @Bean
     NewTopic paymentEventsTopic() {
         return TopicBuilder.name(KafkaTopics.PAYMENT_EVENTS)

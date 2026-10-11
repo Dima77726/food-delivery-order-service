@@ -30,8 +30,9 @@ import java.util.List;
  * сравнения: {@code RestaurantRepository} — Spring Data JPA, {@code AppUserRepository} —
  * Hibernate вручную, {@code OrderRepository} — Spring JDBC.
  *
- * <p>Методов обновления и удаления нет намеренно: журнал, который можно поправить,
- * ничего не доказывает.
+ * <p>Методов удаления и правки записи нет намеренно: журнал, который можно поправить,
+ * ничего не доказывает. Единственный UPDATE — {@link #markPublished} — трогает отметку
+ * доставки в сводный журнал и ни одного поля самой записи.
  *
  * <p><b>Главное, что нужно понять из этого класса.</b> Соединение берётся у
  * {@link DataSourceUtils}, а не у {@code dataSource.getConnection()}, и это не стилистика.
@@ -67,6 +68,15 @@ public class AuditLogRepository {
             """;
 
     private static final String ORDER_AND_LIMIT = " ORDER BY a.created_at DESC, a.id DESC LIMIT ?";
+
+    private static final String MARK_PUBLISHED = """
+            UPDATE audit_log
+            SET published_at = CURRENT_TIMESTAMP
+            WHERE id = ANY (?)
+              AND published_at IS NULL
+            """;
+
+    private static final String COUNT_UNPUBLISHED = "SELECT COUNT(*) FROM audit_log WHERE published_at IS NULL";
 
     private final DataSource dataSource;
 
@@ -152,10 +162,68 @@ public class AuditLogRepository {
     }
 
     /**
-     * Общая обвязка для трёх чтений: получить соединение, подготовить запрос, пройти по
+     * Пачка записей, ещё не отправленных в сводный журнал, — с блокировкой за собой.
+     *
+     * <p>Тот же {@code FOR UPDATE SKIP LOCKED}, что и у outbox заказов: два экземпляра сервиса
+     * разбирают журнал параллельно и не берут одну запись дважды. Блокировка живёт до конца
+     * транзакции, поэтому вызывать метод имеет смысл только внутри неё.
+     */
+    public List<AuditEntry> lockUnpublished(int limit) {
+        return query(
+                SELECT_ENTRY + " WHERE a.published_at IS NULL ORDER BY a.id LIMIT ? FOR UPDATE SKIP LOCKED",
+                statement -> statement.setInt(1, limit)
+        );
+    }
+
+    /**
+     * Отмечает записи доставленными.
+     *
+     * <p>Список уходит одним параметром-массивом, а не строкой {@code IN (?, ?, ...)}: число
+     * знаков вопроса пришлось бы собирать под каждый вызов, и у каждой длины пачки был бы свой
+     * текст запроса. {@code = ANY (?)} — один текст на любую пачку. Массив создаёт само
+     * соединение: тип элементов назван так, как его знает PostgreSQL, а не Java.
+     */
+    public int markPublished(List<Long> ids) {
+        if (ids.isEmpty()) {
+            return 0;
+        }
+
+        Connection connection = DataSourceUtils.getConnection(dataSource);
+
+        try (PreparedStatement statement = connection.prepareStatement(MARK_PUBLISHED)) {
+            statement.setArray(1, connection.createArrayOf("bigint", ids.toArray()));
+
+            // executeUpdate возвращает число изменённых строк, и запрос сам отсекает уже
+            // отмеченные: повторная отметка не сдвинет время первой.
+            return statement.executeUpdate();
+        } catch (SQLException exception) {
+            throw translate("mark audit entries published", MARK_PUBLISHED, exception);
+        } finally {
+            DataSourceUtils.releaseConnection(connection, dataSource);
+        }
+    }
+
+    /** Сколько записей ещё не уехало в сводный журнал. Для метрики. */
+    public long countUnpublished() {
+        Connection connection = DataSourceUtils.getConnection(dataSource);
+
+        try (PreparedStatement statement = connection.prepareStatement(COUNT_UNPUBLISHED);
+             ResultSet resultSet = statement.executeQuery()) {
+            resultSet.next();
+
+            return resultSet.getLong(1);
+        } catch (SQLException exception) {
+            throw translate("count unpublished audit entries", COUNT_UNPUBLISHED, exception);
+        } finally {
+            DataSourceUtils.releaseConnection(connection, dataSource);
+        }
+    }
+
+    /**
+     * Общая обвязка для чтений журнала: получить соединение, подготовить запрос, пройти по
      * результату, всё закрыть, перевести исключение, отпустить соединение.
      *
-     * <p>Вынесена не ради красоты — без неё эти двадцать строк были бы скопированы трижды,
+     * <p>Вынесена не ради красоты — без неё эти двадцать строк были бы скопированы четырежды,
      * и достаточно один раз забыть {@code releaseConnection} в одной из копий, чтобы пул
      * соединений исчерпался под нагрузкой.
      *
