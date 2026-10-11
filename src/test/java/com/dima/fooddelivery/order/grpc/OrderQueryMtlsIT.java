@@ -31,7 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 /**
  * gRPC-сервер заказов под взаимным TLS — так, как он работает в compose.
  *
- * <p>Монолит ({@code CN=core}) и сервис трека допущены: ответ на несуществующий заказ —
+ * <p>insights-service и сервис трека допущены: ответ на несуществующий заказ —
  * NOT_FOUND, то есть запрос дошёл до кода сервиса. Посторонний с подлинным сертификатом того же CA получает
  * PERMISSION_DENIED. Сертификаты — тестовые, из {@code src/test/resources/grpc-tls}.
  */
@@ -55,7 +55,7 @@ class OrderQueryMtlsIT extends AbstractIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"core", "tracking-service"})
+    @ValueSource(strings = {"insights-service", "tracking-service"})
     void shouldServeAllowedServices(String service) {
         StatusRuntimeException error = assertThrows(
                 StatusRuntimeException.class,

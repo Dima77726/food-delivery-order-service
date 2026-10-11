@@ -32,5 +32,5 @@ app:
   grpc:
     security:
       mtls: true
-      # Заказы читает монолит (отзывы, рекомендации), заказы и доставки — сервис трека.
-      allowed-clients: core,tracking-service
+      # Заказы читает insights-service (отзывы, рекомендации), заказы и доставки — сервис трека.
+      allowed-clients: insights-service,tracking-service
