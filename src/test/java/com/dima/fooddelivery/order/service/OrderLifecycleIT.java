@@ -55,6 +55,23 @@ class OrderLifecycleIT extends AbstractIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    /** Создание заказа обязано попасть в журнал: статус не меняется, и слушатель смены статуса его не увидит. */
+    @Test
+    void shouldAuditOrderCreation() {
+        Long customerId = testData.insertCustomer();
+        Long restaurantId = testData.insertRestaurant();
+        Long menuItemId = testData.insertMenuItem(restaurantId, new BigDecimal("450.00"));
+        cartService.addItemToCart(customerId, restaurantId, new AddCartItemRequest(menuItemId, 1));
+
+        Long orderId = orderService.createOrderFromActiveCart(customerId, restaurantId).id();
+
+        Integer records = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'ORDER_CREATED' AND resource_type = 'ORDER' AND resource_id = ?",
+                Integer.class, String.valueOf(orderId));
+
+        assertEquals(1, records);
+    }
+
     @Test
     void shouldCarryOrderFromCartToDelivered() {
         Long customerId = testData.insertCustomer();

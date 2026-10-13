@@ -1,5 +1,6 @@
 package com.dima.fooddelivery.order.service;
 
+import com.dima.fooddelivery.audit.service.AuditService;
 import com.dima.fooddelivery.cart.domain.Cart;
 import com.dima.fooddelivery.cart.domain.CartItem;
 import com.dima.fooddelivery.cart.service.CartService;
@@ -54,6 +55,7 @@ public class OrderService {
     private final CartService cartService;
     private final PaymentCommandWriter paymentCommands;
     private final BusinessMetrics metrics;
+    private final AuditService auditService;
 
     /**
      * Создаёт заказ из активной корзины клиента.
@@ -95,6 +97,15 @@ public class OrderService {
         orderStatusService.recordEvent(
                 orderId,
                 OrderEventType.ORDER_CREATED,
+                "Заказ создан из активной корзины"
+        );
+
+        // Создание — не смена статуса, поэтому до аудитного слушателя событие статуса не доходит.
+        // Без этой записи в журнале заказ появлялся бы только при оплате.
+        auditService.recordSuccess(
+                OrderEventType.ORDER_CREATED.getDbValue(),
+                "ORDER",
+                String.valueOf(orderId),
                 "Заказ создан из активной корзины"
         );
 
