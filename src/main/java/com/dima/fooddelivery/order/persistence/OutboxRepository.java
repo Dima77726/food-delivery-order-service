@@ -1,5 +1,6 @@
 package com.dima.fooddelivery.order.persistence;
 
+import com.dima.fooddelivery.common.tracing.OutboxTraceContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -23,10 +24,12 @@ public class OutboxRepository {
             rs.getString("event_type"),
             rs.getString("payload"),
             rs.getInt("attempts"),
-            rs.getString("correlation_id")
+            rs.getString("correlation_id"),
+            rs.getString("traceparent")
     );
 
     private final NamedParameterJdbcTemplate jdbc;
+    private final OutboxTraceContext traceContext;
 
     /**
      * Кладёт событие в очередь на публикацию.
@@ -51,16 +54,17 @@ public class OutboxRepository {
                 .addValue("aggregateId", aggregateId)
                 .addValue("eventType", eventType)
                 .addValue("payload", payload)
-                .addValue("correlationId", correlationId);
+                .addValue("correlationId", correlationId)
+                .addValue("traceparent", traceContext.capture());
 
         jdbc.update(
                 """
                         INSERT INTO order_event_outbox (
-                            event_id, topic, aggregate_type, aggregate_id, event_type, payload, correlation_id
+                            event_id, topic, aggregate_type, aggregate_id, event_type, payload, correlation_id, traceparent
                         )
                         VALUES (
                             CAST(:eventId AS UUID), :topic, :aggregateType, :aggregateId, :eventType,
-                            :payload, :correlationId
+                            :payload, :correlationId, :traceparent
                         )
                         """,
                 params
@@ -83,7 +87,7 @@ public class OutboxRepository {
         return jdbc.query(
                 """
                         SELECT id, event_id, topic, aggregate_type, aggregate_id, event_type, payload,
-                               attempts, correlation_id
+                               attempts, correlation_id, traceparent
                         FROM order_event_outbox
                         WHERE status = 'PENDING'
                         ORDER BY id
