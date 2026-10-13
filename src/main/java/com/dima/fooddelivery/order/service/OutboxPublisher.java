@@ -1,5 +1,6 @@
 package com.dima.fooddelivery.order.service;
 
+import com.dima.fooddelivery.common.tracing.OutboxTraceContext;
 import com.dima.fooddelivery.common.web.RequestContext;
 import com.dima.fooddelivery.order.persistence.OutboxRecord;
 import com.dima.fooddelivery.order.persistence.OutboxRepository;
@@ -50,6 +51,7 @@ public class OutboxPublisher {
 
     private final OutboxRepository outboxRepository;
     private final KafkaTemplate<String, String> kafkaTemplate;
+    private final OutboxTraceContext traceContext;
 
     /**
      * Вся пачка в одной транзакции: блокировка из {@code SKIP LOCKED} живёт ровно до её конца.
@@ -83,7 +85,9 @@ public class OutboxPublisher {
             MDC.put(RequestContext.CORRELATION_ID_MDC_KEY, record.correlationId());
         }
 
-        try {
+        // Спан публикации - потомок спана запроса, записавшего событие: продюсер Kafka станет его
+        // потомком, и трасса пройдёт через брокер к потребителю одной цепочкой.
+        try (OutboxTraceContext.Active ignored = traceContext.start(record.traceparent())) {
             return sendAndMark(record);
         } finally {
             MDC.remove(RequestContext.CORRELATION_ID_MDC_KEY);
