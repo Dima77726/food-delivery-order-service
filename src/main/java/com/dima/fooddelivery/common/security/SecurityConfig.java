@@ -51,6 +51,9 @@ public class SecurityConfig {
             "/swagger-ui.html"
     };
 
+    /** WSDL — описание контракта, секретов в нём нет; партнёр забирает его до получения токена. */
+    private static final String WSDL_PATH = "/ws/*.wsdl";
+
     private final JwtProperties jwtProperties;
     private final CurrentUser currentUser;
 
@@ -84,6 +87,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.GET, PUBLIC_GET_PATHS).permitAll()
+                        .requestMatchers(HttpMethod.GET, WSDL_PATH).permitAll()
                         .requestMatchers("/api/v1/admin/**").hasRole(ADMIN_ROLE)
                         .anyRequest().authenticated()
                 )

@@ -32,6 +32,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -285,6 +286,35 @@ public class OrderService {
         }
 
         return OrderResponseMapper.toResponse(requireOrder(orderId));
+    }
+
+    /**
+     * Заказы, которые ресторану предстоит обработать: оплачены, приняты, готовятся или ждут курьера.
+     * Всё, что дальше (в доставке, доставлено) или до оплаты, кассе ресторана не нужно.
+     *
+     * <p>Статус в запросе один, поэтому по каждому делается свой запрос, а результат склеивается и
+     * сортируется: новые первыми. Размер страницы ограничен сверху — открытых заказов у одного
+     * ресторана не бывает больше сотни на статус.
+     */
+    @Transactional(readOnly = true)
+    public List<OrderSummary> getOpenOrdersForRestaurant(Long restaurantId) {
+        return List.of(OrderStatus.PAID, OrderStatus.ACCEPTED, OrderStatus.COOKING, OrderStatus.READY_FOR_DELIVERY)
+                .stream()
+                .flatMap(status -> orderRepository
+                        .findSummariesByRestaurantId(restaurantId, status, PageRequestParams.MAX_PAGE_SIZE, 0)
+                        .stream())
+                .sorted(Comparator.comparing(OrderSummary::createdAt).reversed())
+                .toList();
+    }
+
+    /**
+     * Заказ ресторана целиком. Чужой заказ — отказ в доступе, как и в REST.
+     */
+    @Transactional(readOnly = true)
+    public Order getOrderForRestaurant(Long restaurantId, Long orderId) {
+        requireRestaurantOrder(restaurantId, orderId);
+
+        return requireOrder(orderId);
     }
 
     @Transactional

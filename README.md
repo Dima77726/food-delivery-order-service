@@ -32,3 +32,14 @@ docker build --secret id=maven_settings,src=$HOME/.m2/settings.xml -t food-deliv
 ```
 
 CI публикует образ в `ghcr.io/<владелец>/food-delivery-order-service` на каждый пуш в `main` и `dev`.
+
+## Партнёрский SOAP API (заказы для касс)
+
+Для касс ресторанов, которым REST неудобен. Контракт — XSD в `soap-contracts`
+(`urn:fooddelivery:partner:v1`), WSDL строится по нему: `GET /ws/orders.wsdl` (без токена). Запросы —
+`POST /ws/orders` с заголовком `Authorization: Bearer <JWT>`; права как у REST (управляющий рестораном
+или администратор), заказ другого ресторана недоступен.
+
+Операции: `ListOpenOrders` (оплачены, приняты, готовятся, ждут курьера; новые первыми),
+`GetOrderStatus`, `AcceptOrder`. Правила переходов общие с REST — их выполняет `OrderService`.
+Ошибки — SOAP Fault с деталью `PartnerFault` (`FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, …).
