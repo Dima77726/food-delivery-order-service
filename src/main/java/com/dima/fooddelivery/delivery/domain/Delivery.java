@@ -1,5 +1,7 @@
 package com.dima.fooddelivery.delivery.domain;
 
+import com.dima.fooddelivery.order.domain.DeliveryAddress;
+
 import java.time.OffsetDateTime;
 
 public record Delivery(
@@ -10,7 +12,8 @@ public record Delivery(
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt,
         OffsetDateTime pickedUpAt,
-        OffsetDateTime deliveredAt
+        OffsetDateTime deliveredAt,
+        DeliveryAddress address
 ) {
 
     public boolean assignedTo(Long candidateCourierId) {

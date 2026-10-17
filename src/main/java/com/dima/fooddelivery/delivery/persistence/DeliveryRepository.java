@@ -2,6 +2,7 @@ package com.dima.fooddelivery.delivery.persistence;
 
 import com.dima.fooddelivery.delivery.domain.Delivery;
 import com.dima.fooddelivery.delivery.domain.DeliveryStatus;
+import com.dima.fooddelivery.order.domain.DeliveryAddress;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -25,13 +26,27 @@ public class DeliveryRepository {
             rs.getObject("created_at", OffsetDateTime.class),
             rs.getObject("updated_at", OffsetDateTime.class),
             rs.getObject("picked_up_at", OffsetDateTime.class),
-            rs.getObject("delivered_at", OffsetDateTime.class)
+            rs.getObject("delivered_at", OffsetDateTime.class),
+            rs.getString("delivery_address") == null ? null : new DeliveryAddress(
+                    rs.getString("delivery_address"),
+                    rs.getString("delivery_address_details"),
+                    rs.getBigDecimal("delivery_latitude"),
+                    rs.getBigDecimal("delivery_longitude")
+            )
     );
 
+    /**
+     * Адрес берётся из заказа на чтении, а не копируется в доставку: он задаётся один раз при
+     * оформлении и дальше не меняется, так что второй экземпляр было бы нечем рассинхронизировать,
+     * но и незачем хранить. Писать в {@code customer_order} модуль доставки по-прежнему не может.
+     */
     private static final String SELECT_DELIVERY = """
             SELECT d.id, d.order_id, d.courier_id, d.status,
-                   d.created_at, d.updated_at, d.picked_up_at, d.delivered_at
+                   d.created_at, d.updated_at, d.picked_up_at, d.delivered_at,
+                   co.delivery_address, co.delivery_address_details,
+                   co.delivery_latitude, co.delivery_longitude
             FROM delivery d
+            JOIN customer_order co ON co.id = d.order_id
             """;
 
     private final NamedParameterJdbcTemplate jdbc;

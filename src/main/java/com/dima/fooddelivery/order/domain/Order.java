@@ -9,6 +9,8 @@ import java.util.List;
  *
  * <p>Не путать с {@code OrderRow}: там плоская строка join'а, где поля заказа продублированы
  * для каждой позиции. Схлопывание дубликатов — работа репозитория, и наружу она не протекает.
+ *
+ * <p>{@code deliveryAddress} равен {@code null} у заказов, оформленных без адреса.
  */
 public record Order(
         Long id,
@@ -17,6 +19,7 @@ public record Order(
         Long restaurantId,
         OrderStatus status,
         BigDecimal totalAmount,
+        DeliveryAddress deliveryAddress,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt,
         List<OrderItem> items

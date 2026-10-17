@@ -5,8 +5,10 @@ import com.dima.fooddelivery.cart.service.CartService;
 import com.dima.fooddelivery.common.exception.BusinessRuleViolationException;
 import com.dima.fooddelivery.delivery.api.DeliveryResponse;
 import com.dima.fooddelivery.delivery.service.DeliveryService;
+import com.dima.fooddelivery.order.api.DeliveryAddressResponse;
 import com.dima.fooddelivery.order.api.OrderResponse;
 import com.dima.fooddelivery.order.api.PayOrderRequest;
+import com.dima.fooddelivery.order.domain.DeliveryAddress;
 import com.dima.fooddelivery.order.domain.OrderStatus;
 import com.dima.fooddelivery.order.domain.PaymentMethod;
 import com.dima.fooddelivery.order.saga.PaymentSaga;
@@ -134,6 +136,43 @@ class OrderLifecycleIT extends AbstractIntegrationTest {
                         "DELIVERED",
                         lastOutboxStatus(orderId),
                         "последним в outbox должен лежать перевод в DELIVERED"
+                )
+        );
+    }
+
+    /** Курьер видит, куда везти: адрес задаётся в заказе, а доставка отдаёт его из заказа. */
+    @Test
+    void shouldShowOrderDeliveryAddressToCourier() {
+        Long customerId = testData.insertCustomer();
+        Long courierId = testData.insertCourier();
+        Long restaurantId = testData.insertRestaurant();
+        Long menuItemId = testData.insertMenuItem(restaurantId, new BigDecimal("450.00"));
+        cartService.addItemToCart(customerId, restaurantId, new AddCartItemRequest(menuItemId, 1));
+
+        DeliveryAddress address = new DeliveryAddress(
+                "Москва, Тверская улица, 7", "кв. 12", new BigDecimal("55.757654"), new BigDecimal("37.613400"));
+        Long orderId = orderService.createOrderFromActiveCart(customerId, restaurantId, address).id();
+
+        paymentSaga.requestPayment(customerId, orderId, cardPayment());
+        payments.succeeded(orderId);
+        orderService.acceptOrder(restaurantId, orderId);
+        orderService.startCookingOrder(restaurantId, orderId);
+        orderService.markOrderReadyForDelivery(restaurantId, orderId);
+
+        DeliveryResponse delivery = deliveryService.createDeliveryForOrder(orderId);
+
+        assertAll(
+                () -> assertEquals(DeliveryAddressResponse.from(address), delivery.deliveryAddress()),
+                () -> assertEquals(
+                        DeliveryAddressResponse.from(address),
+                        deliveryService.getAvailableDeliveries().stream()
+                                .filter(d -> d.id().equals(delivery.id()))
+                                .findFirst().orElseThrow()
+                                .deliveryAddress()
+                ),
+                () -> assertEquals(
+                        DeliveryAddressResponse.from(address),
+                        deliveryService.assignCourierToDelivery(courierId, delivery.id()).deliveryAddress()
                 )
         );
     }

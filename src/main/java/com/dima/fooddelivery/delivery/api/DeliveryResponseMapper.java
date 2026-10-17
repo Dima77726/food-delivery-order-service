@@ -1,6 +1,7 @@
 package com.dima.fooddelivery.delivery.api;
 
 import com.dima.fooddelivery.delivery.domain.Delivery;
+import com.dima.fooddelivery.order.api.DeliveryAddressResponse;
 
 import java.util.List;
 
@@ -15,7 +16,8 @@ public final class DeliveryResponseMapper {
                 delivery.createdAt(),
                 delivery.updatedAt(),
                 delivery.pickedUpAt(),
-                delivery.deliveredAt()
+                delivery.deliveredAt(),
+                DeliveryAddressResponse.from(delivery.address())
         );
     }
 

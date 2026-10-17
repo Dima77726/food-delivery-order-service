@@ -4,6 +4,7 @@ import com.dima.fooddelivery.common.api.CursorPageResponse;
 import com.dima.fooddelivery.common.api.CursorRequestParams;
 import com.dima.fooddelivery.common.api.PageRequestParams;
 import com.dima.fooddelivery.common.api.PageResponse;
+import com.dima.fooddelivery.order.domain.DeliveryAddress;
 import com.dima.fooddelivery.order.domain.OrderStatus;
 import com.dima.fooddelivery.order.service.OrderService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -19,6 +20,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -53,11 +55,18 @@ public class OrderController {
             @PathVariable Long customerId,
 
             @Positive(message = "restaurantId должен быть положительным числом")
-            @PathVariable Long restaurantId
-    ) {
-        log.info("Создание заказа: customerId={}, restaurantId={}", customerId, restaurantId);
+            @PathVariable Long restaurantId,
 
-        return orderService.createOrderFromActiveCart(customerId, restaurantId);
+            @Valid @RequestBody(required = false) CreateOrderRequest request
+    ) {
+        DeliveryAddress address = request == null || request.deliveryAddress() == null
+                ? null
+                : request.deliveryAddress().toDomain();
+
+        log.info("Создание заказа: customerId={}, restaurantId={}, withAddress={}",
+                customerId, restaurantId, address != null);
+
+        return orderService.createOrderFromActiveCart(customerId, restaurantId, address);
     }
 
     @GetMapping("/api/v1/customers/{customerId}/orders/{orderId}")
