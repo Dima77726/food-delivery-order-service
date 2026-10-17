@@ -10,6 +10,7 @@ public record OrderResponse(
         Long restaurantId,
         String status,
         BigDecimal totalAmount,
+        DeliveryAddressResponse deliveryAddress,
         List<OrderItemResponse> items
 ) {
 }

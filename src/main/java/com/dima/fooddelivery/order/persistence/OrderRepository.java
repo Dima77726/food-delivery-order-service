@@ -1,5 +1,6 @@
 package com.dima.fooddelivery.order.persistence;
 
+import com.dima.fooddelivery.order.domain.DeliveryAddress;
 import com.dima.fooddelivery.order.domain.Order;
 import com.dima.fooddelivery.order.domain.OrderAccess;
 import com.dima.fooddelivery.order.domain.OrderItem;
@@ -52,6 +53,10 @@ public class OrderRepository {
                 co.restaurant_id,
                 co.status        AS order_status,
                 co.total_amount,
+                co.delivery_address,
+                co.delivery_address_details,
+                co.delivery_latitude,
+                co.delivery_longitude,
                 co.created_at,
                 co.updated_at,
 
@@ -294,18 +299,34 @@ public class OrderRepository {
         return Boolean.TRUE.equals(exists);
     }
 
-    public Long insert(Long cartId, Long customerId, Long restaurantId, OrderStatus status, BigDecimal totalAmount) {
+    public Long insert(
+            Long cartId,
+            Long customerId,
+            Long restaurantId,
+            OrderStatus status,
+            BigDecimal totalAmount,
+            DeliveryAddress deliveryAddress
+    ) {
+        Optional<DeliveryAddress> address = Optional.ofNullable(deliveryAddress);
+
         SqlParameterSource params = new MapSqlParameterSource()
                 .addValue("cartId", cartId)
                 .addValue("customerId", customerId)
                 .addValue("restaurantId", restaurantId)
                 .addValue("status", status.getDbValue())
-                .addValue("totalAmount", totalAmount);
+                .addValue("totalAmount", totalAmount)
+                .addValue("address", address.map(DeliveryAddress::address).orElse(null))
+                .addValue("details", address.map(DeliveryAddress::details).orElse(null))
+                .addValue("latitude", address.map(DeliveryAddress::latitude).orElse(null))
+                .addValue("longitude", address.map(DeliveryAddress::longitude).orElse(null));
 
         return jdbc.queryForObject(
                 """
-                        INSERT INTO customer_order (cart_id, customer_id, restaurant_id, status, total_amount)
-                        VALUES (:cartId, :customerId, :restaurantId, :status, :totalAmount)
+                        INSERT INTO customer_order (cart_id, customer_id, restaurant_id, status, total_amount,
+                                                    delivery_address, delivery_address_details,
+                                                    delivery_latitude, delivery_longitude)
+                        VALUES (:cartId, :customerId, :restaurantId, :status, :totalAmount,
+                                :address, :details, :latitude, :longitude)
                         RETURNING id
                         """,
                 params,
@@ -469,6 +490,10 @@ public class OrderRepository {
                             co.restaurant_id,
                             co.status        AS order_status,
                             co.total_amount,
+                            co.delivery_address,
+                            co.delivery_address_details,
+                            co.delivery_latitude,
+                            co.delivery_longitude,
                             co.created_at,
                             co.updated_at,
 
@@ -555,6 +580,12 @@ public class OrderRepository {
                 first.restaurantId(),
                 first.orderStatus(),
                 first.totalAmount(),
+                first.deliveryAddress() == null ? null : new DeliveryAddress(
+                        first.deliveryAddress(),
+                        first.deliveryAddressDetails(),
+                        first.deliveryLatitude(),
+                        first.deliveryLongitude()
+                ),
                 first.createdAt(),
                 first.updatedAt(),
                 new ArrayList<>(items.values())

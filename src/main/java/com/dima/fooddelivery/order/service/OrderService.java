@@ -17,6 +17,7 @@ import com.dima.fooddelivery.order.api.OrderEventResponse;
 import com.dima.fooddelivery.order.api.OrderResponse;
 import com.dima.fooddelivery.order.api.OrderResponseMapper;
 import com.dima.fooddelivery.order.api.OrderSummaryResponse;
+import com.dima.fooddelivery.order.domain.DeliveryAddress;
 import com.dima.fooddelivery.order.domain.Order;
 import com.dima.fooddelivery.order.domain.OrderAccess;
 import com.dima.fooddelivery.order.domain.OrderEventType;
@@ -67,6 +68,15 @@ public class OrderService {
      */
     @Transactional
     public OrderResponse createOrderFromActiveCart(Long customerId, Long restaurantId) {
+        return createOrderFromActiveCart(customerId, restaurantId, null);
+    }
+
+    /**
+     * То же, что {@link #createOrderFromActiveCart(Long, Long)}, но с адресом доставки.
+     * {@code deliveryAddress} может быть {@code null}: адрес пока необязателен.
+     */
+    @Transactional
+    public OrderResponse createOrderFromActiveCart(Long customerId, Long restaurantId, DeliveryAddress deliveryAddress) {
         Timer.Sample checkout = metrics.startCheckout();
 
         Cart cart = cartService.requireActiveCart(customerId, restaurantId);
@@ -86,7 +96,8 @@ public class OrderService {
                 customerId,
                 restaurantId,
                 OrderStatus.CREATED,
-                totalAmount
+                totalAmount,
+                deliveryAddress
         );
 
         orderRepository.insertItems(orderId, cart.items().stream()

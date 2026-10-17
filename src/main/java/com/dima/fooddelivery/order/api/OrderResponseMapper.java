@@ -17,6 +17,7 @@ public final class OrderResponseMapper {
                 order.restaurantId(),
                 order.status().getDbValue(),
                 order.totalAmount(),
+                DeliveryAddressResponse.from(order.deliveryAddress()),
                 order.items().stream().map(OrderResponseMapper::toResponse).toList()
         );
     }
