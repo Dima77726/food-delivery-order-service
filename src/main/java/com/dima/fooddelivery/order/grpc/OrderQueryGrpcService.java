@@ -1,5 +1,10 @@
 package com.dima.fooddelivery.order.grpc;
 
+import com.dima.fooddelivery.grpc.order.v1.OrderEventView;
+import com.dima.fooddelivery.grpc.order.v1.WatchOrderRequest;
+import com.dima.fooddelivery.live.OrderWatchers;
+import com.dima.fooddelivery.order.service.OrderStatusService;
+import io.grpc.stub.ServerCallStreamObserver;
 import com.dima.fooddelivery.common.exception.ResourceNotFoundException;
 import com.dima.fooddelivery.delivery.domain.Delivery;
 import com.dima.fooddelivery.delivery.persistence.DeliveryRepository;
@@ -43,6 +48,8 @@ public class OrderQueryGrpcService extends OrderQueryServiceGrpc.OrderQueryServi
 
     private final OrderRepository orderRepository;
     private final DeliveryRepository deliveryRepository;
+    private final OrderStatusService orderStatusService;
+    private final OrderWatchers orderWatchers;
 
     @Override
     @Transactional(readOnly = true)
@@ -75,6 +82,23 @@ public class OrderQueryGrpcService extends OrderQueryServiceGrpc.OrderQueryServi
                 .map(OrderQueryGrpcService::toView)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Доставка с id=" + request.getDeliveryId() + " не найдена")));
+    }
+
+    /**
+     * Server streaming: поток событий заказа до финального статуса. Не {@code @Transactional}: вызов
+     * живёт долго, а транзакция держала бы соединение с базой всё это время — события дочитывает
+     * {@link OrderWatchers} короткими запросами.
+     */
+    @Override
+    public void watchOrder(WatchOrderRequest request, StreamObserver<OrderEventView> responseObserver) {
+        try {
+            orderStatusService.requireAccess(request.getOrderId());
+        } catch (ResourceNotFoundException exception) {
+            responseObserver.onError(Status.NOT_FOUND.withDescription(exception.getMessage()).asRuntimeException());
+            return;
+        }
+        orderWatchers.watch(request.getOrderId(), request.getAfterEventId(),
+                (ServerCallStreamObserver<OrderEventView>) responseObserver);
     }
 
     private OrderView toView(Order order) {
