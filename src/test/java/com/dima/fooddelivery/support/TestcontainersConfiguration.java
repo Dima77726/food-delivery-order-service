@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
@@ -49,6 +50,13 @@ public class TestcontainersConfiguration {
      * {@code ConfluentKafkaContainer} + cp-kafka. Оба брокера — та же Kafka в режиме KRaft,
      * различаются только обвязкой запуска, а она в тестах и не проверяется.
      */
+    /** Redis для присутствия курьеров (GEO) и коэффициента спроса. */
+    @Bean
+    @ServiceConnection(name = "redis")
+    GenericContainer<?> redisContainer() {
+        return new GenericContainer<>("redis:7.4-alpine").withExposedPorts(6379);
+    }
+
     @Bean
     @ServiceConnection
     ConfluentKafkaContainer kafkaContainer() {

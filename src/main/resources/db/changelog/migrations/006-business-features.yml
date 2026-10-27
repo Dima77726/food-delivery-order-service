@@ -1,0 +1,9 @@
+databaseChangeLog:
+  - changeSet:
+      id: 006-business-features
+      author: dima
+      changes:
+        - sqlFile:
+            path: sql/006-business-features.sql
+            relativeToChangelogFile: true
+            splitStatements: true

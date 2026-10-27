@@ -10,6 +10,10 @@ import java.util.List;
 public final class OrderResponseMapper {
 
     public static OrderResponse toResponse(Order order) {
+        return toResponse(order, null);
+    }
+
+    public static OrderResponse toResponse(Order order, com.dima.fooddelivery.pricing.OrderTermsRepository.OrderTerms terms) {
         return new OrderResponse(
                 order.id(),
                 order.cartId(),
@@ -18,7 +22,8 @@ public final class OrderResponseMapper {
                 order.status().getDbValue(),
                 order.totalAmount(),
                 DeliveryAddressResponse.from(order.deliveryAddress()),
-                order.items().stream().map(OrderResponseMapper::toResponse).toList()
+                order.items().stream().map(OrderResponseMapper::toResponse).toList(),
+                OrderTermsResponse.of(terms)
         );
     }
 

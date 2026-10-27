@@ -26,6 +26,9 @@ import com.dima.fooddelivery.order.domain.OrderSummary;
 import com.dima.fooddelivery.order.persistence.OrderEventRepository;
 import com.dima.fooddelivery.order.persistence.OrderRepository;
 import com.dima.fooddelivery.order.saga.PaymentCommandWriter;
+import com.dima.fooddelivery.pricing.CheckoutPricing;
+import com.dima.fooddelivery.pricing.OrderTermsRepository;
+import com.dima.fooddelivery.promo.PromoService;
 import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -58,6 +61,10 @@ public class OrderService {
     private final PaymentCommandWriter paymentCommands;
     private final BusinessMetrics metrics;
     private final AuditService auditService;
+    private final CheckoutPricing checkoutPricing;
+    private final OrderTermsRepository orderTermsRepository;
+    private final com.dima.fooddelivery.pricing.PricingProperties pricingProperties;
+    private final PromoService promoService;
 
     /**
      * Создаёт заказ из активной корзины клиента.
@@ -77,6 +84,17 @@ public class OrderService {
      */
     @Transactional
     public OrderResponse createOrderFromActiveCart(Long customerId, Long restaurantId, DeliveryAddress deliveryAddress) {
+        return createOrderFromActiveCart(customerId, restaurantId, deliveryAddress, CheckoutPricing.Options.NONE);
+    }
+
+    /**
+     * Оформление с промокодом, чаевыми и временем доставки. Сумма заказа — блюда − скидка + доставка
+     * (если указан адрес) + чаевые; расшифровка фиксируется в {@code order_terms}. Промокод гасится в этой
+     * же транзакции: заказ не создался — использование не потрачено.
+     */
+    @Transactional
+    public OrderResponse createOrderFromActiveCart(Long customerId, Long restaurantId, DeliveryAddress deliveryAddress,
+                                                   CheckoutPricing.Options options) {
         Timer.Sample checkout = metrics.startCheckout();
 
         Cart cart = cartService.requireActiveCart(customerId, restaurantId);
@@ -89,7 +107,8 @@ public class OrderService {
             );
         }
 
-        BigDecimal totalAmount = cart.totalAmount();
+        CheckoutPricing.Draft draft = checkoutPricing.draft(customerId, restaurantId, cart.totalAmount(), deliveryAddress != null, options);
+        BigDecimal totalAmount = draft.total();
 
         Long orderId = orderRepository.insert(
                 cart.id(),
@@ -105,6 +124,11 @@ public class OrderService {
                 .toList());
 
         cartService.checkout(cart.id());
+
+        BigDecimal discount = draft.hasPromo()
+                ? promoService.redeem(draft.promoCode(), customerId, restaurantId, draft.itemsTotal(), orderId)
+                : draft.discount();
+        orderTermsRepository.insert(draft.toTerms(orderId, discount));
 
         orderStatusService.recordEvent(
                 orderId,
@@ -132,7 +156,7 @@ public class OrderService {
                 totalAmount
         );
 
-        return OrderResponseMapper.toResponse(requireOrder(orderId));
+        return OrderResponseMapper.toResponse(requireOrder(orderId), orderTermsRepository.find(orderId).orElse(null));
     }
 
     @Transactional(readOnly = true)
@@ -146,7 +170,7 @@ public class OrderService {
                     );
                 });
 
-        return OrderResponseMapper.toResponse(order);
+        return OrderResponseMapper.toResponse(order, orderTermsRepository.find(orderId).orElse(null));
     }
 
     /**
@@ -353,6 +377,17 @@ public class OrderService {
     @Transactional
     public OrderResponse startCookingOrder(Long restaurantId, Long orderId) {
         OrderAccess access = requireRestaurantOrder(restaurantId, orderId);
+
+        // Заказ ко времени: подтвердить его можно сразу, а готовить — не раньше окна перед сроком,
+        // иначе к приезду курьера еда остынет.
+        orderTermsRepository.find(orderId)
+                .map(OrderTermsRepository.OrderTerms::scheduledFor)
+                .filter(at -> java.time.OffsetDateTime.now().isBefore(at.minus(pricingProperties.acceptWindow())))
+                .ifPresent(at -> {
+                    throw new BusinessRuleViolationException("Заказ ко времени " + at.atZoneSameInstant(java.time.ZoneId.of("Europe/Moscow"))
+                            .toLocalTime().withSecond(0).withNano(0) + ": готовить можно не раньше чем за "
+                            + pricingProperties.acceptWindow().toMinutes() + " минут");
+                });
 
         if (!access.status().canStartCookingByRestaurant()) {
             throw new BusinessRuleViolationException(

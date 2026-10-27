@@ -50,6 +50,10 @@ import java.time.ZonedDateTime;
  *
  * <p>Сутки считаются в часовом поясе {@code app.settlement.zone}: границы суток переводятся в
  * моменты времени, и доставка попадает в день по {@code delivered_at}.
+ *
+ * <p>Выручка ресторана — стоимость блюд ({@code order_terms.items_total}), а не сумма оплаты: доставка
+ * — доход платформы, чаевые — курьера, а скидку по промокоду оплачивает платформа, ресторан получает
+ * за блюда полностью. У старых заказов без расшифровки сумма оплаты и есть стоимость блюд.
  */
 @Slf4j
 @Configuration
@@ -110,9 +114,11 @@ public class SettlementJobConfig {
                 .name("settlementReader")
                 .dataSource(dataSource)
                 .sql("""
-                        SELECT o.restaurant_id, COUNT(*) AS orders_count, SUM(o.total_amount) AS revenue
+                        SELECT o.restaurant_id, COUNT(*) AS orders_count,
+                               SUM(COALESCE(t.items_total, o.total_amount)) AS revenue
                         FROM customer_order o
                         JOIN delivery d ON d.order_id = o.id
+                        LEFT JOIN order_terms t ON t.order_id = o.id
                         WHERE o.status = 'DELIVERED'
                           AND d.delivered_at >= ? AND d.delivered_at < ?
                         GROUP BY o.restaurant_id

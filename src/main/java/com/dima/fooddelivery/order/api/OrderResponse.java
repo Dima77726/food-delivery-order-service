@@ -11,6 +11,7 @@ public record OrderResponse(
         String status,
         BigDecimal totalAmount,
         DeliveryAddressResponse deliveryAddress,
-        List<OrderItemResponse> items
+        List<OrderItemResponse> items,
+        OrderTermsResponse terms
 ) {
 }

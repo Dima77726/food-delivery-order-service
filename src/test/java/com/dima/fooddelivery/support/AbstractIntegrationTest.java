@@ -30,6 +30,9 @@ import org.springframework.transaction.annotation.Transactional;
         // Таймауты оплаты тесты тоже запускают сами: фоновая отмена заказов посреди теста
         // была бы гонкой с его проверками.
         "app.saga.timeout-check-enabled=false",
+        // Автоназначение тесты тоже запускают сами: такт под ShedLock, запущенный таймером, пропустил бы вызов из теста.
+        "app.dispatch.tick=PT1H",
+        "app.dispatch.initial-delay=PT1H",
         "logging.level.liquibase=WARN",
         "logging.level.org.testcontainers=WARN",
         "logging.level.com.zaxxer.hikari=WARN"
