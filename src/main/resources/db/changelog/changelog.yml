@@ -11,3 +11,6 @@ databaseChangeLog:
   - include:
       file: migrations/004-order-delivery-address.yml
       relativeToChangelogFile: true
+  - include:
+      file: migrations/005-settlement.yml
+      relativeToChangelogFile: true

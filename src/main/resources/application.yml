@@ -21,6 +21,14 @@ spring:
   liquibase:
     change-log: classpath:/db/changelog/changelog.yml
 
+  batch:
+    # Задания запускаются расписанием и администратором, а не при старте приложения.
+    job:
+      enabled: false
+    # Таблицы BATCH_* создаёт Liquibase (миграция 005), а не инициализатор Spring Batch.
+    jdbc:
+      initialize-schema: never
+
   grpc:
     server:
       # Чтение заказов и доставок для монолита. По умолчанию — для запуска из IDE,
@@ -97,6 +105,19 @@ app:
     stream-timeout: ${LIVE_STREAM_TIMEOUT:PT30M}
     max-streams: ${LIVE_MAX_STREAMS:500}
     max-poll-timeout: ${LIVE_MAX_POLL_TIMEOUT:PT30S}
+
+  settlement:
+    # Ежедневные расчёты с ресторанами (Spring Batch, пакет settlement).
+    commission-rate: ${SETTLEMENT_COMMISSION_RATE:0.15}
+    zone: ${SETTLEMENT_ZONE:Europe/Moscow}
+    schedule-cron: ${SETTLEMENT_CRON:0 0 3 * * *}
+    storage:
+      # CSV в MinIO (бакет settlements). Выключено по умолчанию: из IDE MinIO может не быть.
+      enabled: ${SETTLEMENT_STORAGE_ENABLED:false}
+      endpoint: ${SETTLEMENT_S3_ENDPOINT:http://localhost:9000}
+      access-key: ${SETTLEMENT_S3_ACCESS_KEY:}
+      secret-key: ${SETTLEMENT_S3_SECRET_KEY:}
+      bucket: ${SETTLEMENT_BUCKET:settlements}
 
   security:
     jwt:

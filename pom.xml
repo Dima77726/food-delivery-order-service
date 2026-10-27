@@ -22,6 +22,10 @@
         <springdoc.version>3.1.0</springdoc.version>
         <!-- Версия контрактов своя, отдельно от версии сервиса: см. food-delivery-contracts. -->
         <contracts.version>1.4.0</contracts.version>
+        <!-- Клиент MinIO (S3 API) для файлов расчётов; не входит в spring-boot-dependencies. -->
+        <minio.version>8.5.17</minio.version>
+        <!-- Версия okhttp 5, которую уже тянет экспортёр OpenTelemetry; держать в согласии с ней. -->
+        <okhttp.version>5.2.1</okhttp.version>
         <!-- Нужны Spring WS для WSDL и включения общей части схемы; в стартер не входят. -->
         <wsdl4j.version>1.6.3</wsdl4j.version>
         <xmlschema.version>2.3.1</xmlschema.version>
@@ -194,6 +198,32 @@
         </dependency>
 
         <!-- Все модули сервиса — на Spring JDBC; Hibernate здесь не нужен. -->
+        <!-- Пакетная обработка: ежедневные расчёты с ресторанами (см. пакет settlement). Репозиторий заданий —
+             в базе сервиса, поэтому стартер с JDBC. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-batch-jdbc</artifactId>
+        </dependency>
+
+        <!-- Файл расчётов уходит в MinIO (S3). Исключение okhttp — та же история, что в каталоге: minio тянет
+             okhttp 4 с okio 3.6, а экспортёр OpenTelemetry — okhttp 5; два okhttp в classpath ломают друг друга. -->
+        <dependency>
+            <groupId>io.minio</groupId>
+            <artifactId>minio</artifactId>
+            <version>${minio.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.squareup.okhttp3</groupId>
+                    <artifactId>okhttp</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp-jvm</artifactId>
+            <version>${okhttp.version}</version>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jdbc</artifactId>
