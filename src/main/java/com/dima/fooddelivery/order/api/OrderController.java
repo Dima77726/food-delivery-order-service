@@ -7,6 +7,7 @@ import com.dima.fooddelivery.common.api.PageResponse;
 import com.dima.fooddelivery.order.domain.DeliveryAddress;
 import com.dima.fooddelivery.order.domain.OrderStatus;
 import com.dima.fooddelivery.order.service.OrderService;
+import com.dima.fooddelivery.pricing.CheckoutPricing;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -66,7 +67,10 @@ public class OrderController {
         log.info("Создание заказа: customerId={}, restaurantId={}, withAddress={}",
                 customerId, restaurantId, address != null);
 
-        return orderService.createOrderFromActiveCart(customerId, restaurantId, address);
+        CheckoutPricing.Options options = request == null ? CheckoutPricing.Options.NONE
+                : new CheckoutPricing.Options(request.promoCode(), request.tipAmount(), request.scheduledFor());
+
+        return orderService.createOrderFromActiveCart(customerId, restaurantId, address, options);
     }
 
     @GetMapping("/api/v1/customers/{customerId}/orders/{orderId}")

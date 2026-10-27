@@ -21,6 +21,12 @@ spring:
   liquibase:
     change-log: classpath:/db/changelog/changelog.yml
 
+  data:
+    redis:
+      # Присутствие курьеров и гео-индекс для автоназначения, коэффициент спроса. Соединение ленивое.
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
   batch:
     # Задания запускаются расписанием и администратором, а не при старте приложения.
     job:
@@ -105,6 +111,17 @@ app:
     stream-timeout: ${LIVE_STREAM_TIMEOUT:PT30M}
     max-streams: ${LIVE_MAX_STREAMS:500}
     max-poll-timeout: ${LIVE_MAX_POLL_TIMEOUT:PT30S}
+
+  pricing:
+    # Цена доставки = база × коэффициент спроса (1.0–2.0, шаг 0.1); фиксируется в заказе при оформлении.
+    base-delivery-fee: ${PRICING_BASE_DELIVERY_FEE:149}
+    max-surge: ${PRICING_MAX_SURGE:2.0}
+    surge-interval: ${PRICING_SURGE_INTERVAL:PT30S}
+    max-tip: ${PRICING_MAX_TIP:3000}
+    # Заказ ко времени: не раньше чем через 45 минут и не дальше недели; принять можно за час до срока.
+    schedule-min-lead: ${PRICING_SCHEDULE_MIN_LEAD:PT45M}
+    schedule-max-ahead: ${PRICING_SCHEDULE_MAX_AHEAD:P7D}
+    accept-window: ${PRICING_ACCEPT_WINDOW:PT60M}
 
   settlement:
     # Ежедневные расчёты с ресторанами (Spring Batch, пакет settlement).
