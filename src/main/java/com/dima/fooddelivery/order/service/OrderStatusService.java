@@ -3,6 +3,7 @@ package com.dima.fooddelivery.order.service;
 import com.dima.fooddelivery.common.exception.BusinessRuleViolationException;
 import com.dima.fooddelivery.common.exception.ResourceNotFoundException;
 import com.dima.fooddelivery.order.domain.OrderAccess;
+import com.dima.fooddelivery.order.domain.OrderEventAppended;
 import com.dima.fooddelivery.order.domain.OrderEventType;
 import com.dima.fooddelivery.order.domain.OrderStatus;
 import com.dima.fooddelivery.order.domain.OrderStatusChangedEvent;
@@ -182,6 +183,8 @@ public class OrderStatusService {
                             + ", eventType=" + eventType.getDbValue()
             );
         }
+
+        eventPublisher.publishEvent(new OrderEventAppended(orderId));
     }
 
     // --- Именованные переходы для соседних модулей -------------------------------------------

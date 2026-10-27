@@ -6,6 +6,7 @@ import com.dima.fooddelivery.common.security.AccessDeniedForResourceException;
 import com.dima.fooddelivery.delivery.api.DeliveryResponse;
 import com.dima.fooddelivery.delivery.api.DeliveryResponseMapper;
 import com.dima.fooddelivery.delivery.domain.Delivery;
+import com.dima.fooddelivery.delivery.domain.DeliveryAvailabilityChanged;
 import com.dima.fooddelivery.delivery.domain.DeliveryStatus;
 import com.dima.fooddelivery.delivery.persistence.DeliveryRepository;
 import com.dima.fooddelivery.delivery.persistence.DeliveryRepository.DeliveryTimestampColumn;
@@ -13,6 +14,7 @@ import com.dima.fooddelivery.order.domain.OrderAccess;
 import com.dima.fooddelivery.order.service.OrderStatusService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +36,7 @@ public class DeliveryService {
 
     private final DeliveryRepository deliveryRepository;
     private final OrderStatusService orderStatusService;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public DeliveryResponse createDeliveryForOrder(Long orderId) {
@@ -59,6 +62,7 @@ public class DeliveryService {
         }
 
         log.info("Доставка создана: deliveryId={}, orderId={}", deliveryId, orderId);
+        eventPublisher.publishEvent(new DeliveryAvailabilityChanged());
 
         return DeliveryResponseMapper.toResponse(requireDelivery(deliveryId));
     }
@@ -123,6 +127,7 @@ public class DeliveryService {
         }
 
         log.info("Курьер назначен на доставку: deliveryId={}, courierId={}", deliveryId, courierId);
+        eventPublisher.publishEvent(new DeliveryAvailabilityChanged());
 
         return DeliveryResponseMapper.toResponse(requireDelivery(deliveryId));
     }

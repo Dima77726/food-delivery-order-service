@@ -88,6 +88,16 @@ app:
     timeout-check-interval: ${PAYMENT_TIMEOUT_CHECK_INTERVAL:PT1M}
     timeout-check-enabled: ${PAYMENT_TIMEOUT_CHECK_ENABLED:true}
 
+  live:
+    # Живые обновления: SSE заказа и доски ресторана, long polling свободных доставок.
+    # Сигналы между экземплярами — LISTEN/NOTIFY PostgreSQL (см. LiveSignals).
+    enabled: ${LIVE_ENABLED:true}
+    # Пульс короче таймаутов прокси по пути: nginx по умолчанию рвёт молчащее соединение через 60 с.
+    heartbeat: ${LIVE_HEARTBEAT:PT15S}
+    stream-timeout: ${LIVE_STREAM_TIMEOUT:PT30M}
+    max-streams: ${LIVE_MAX_STREAMS:500}
+    max-poll-timeout: ${LIVE_MAX_POLL_TIMEOUT:PT30S}
+
   security:
     jwt:
       issuer: ${JWT_ISSUER:food-delivery-platform}
