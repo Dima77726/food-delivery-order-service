@@ -26,6 +26,8 @@
         <minio.version>8.5.17</minio.version>
         <!-- Версия okhttp 5, которую уже тянет экспортёр OpenTelemetry; держать в согласии с ней. -->
         <okhttp.version>5.2.1</okhttp.version>
+        <!-- Распределённая блокировка фоновых задач (заказы ко времени, автоназначение курьера). -->
+        <shedlock.version>7.10.1</shedlock.version>
         <!-- Нужны Spring WS для WSDL и включения общей части схемы; в стартер не входят. -->
         <wsdl4j.version>1.6.3</wsdl4j.version>
         <xmlschema.version>2.3.1</xmlschema.version>
@@ -198,6 +200,24 @@
         </dependency>
 
         <!-- Все модули сервиса — на Spring JDBC; Hibernate здесь не нужен. -->
+        <!-- Redis: присутствие курьеров и гео-индекс для автоназначения (GEOADD / GEOSEARCH). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!-- ShedLock: фоновую задачу по расписанию запускают все экземпляры, выполняет один. -->
+        <dependency>
+            <groupId>net.javacrumbs.shedlock</groupId>
+            <artifactId>shedlock-spring</artifactId>
+            <version>${shedlock.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>net.javacrumbs.shedlock</groupId>
+            <artifactId>shedlock-provider-jdbc-template</artifactId>
+            <version>${shedlock.version}</version>
+        </dependency>
+
         <!-- Пакетная обработка: ежедневные расчёты с ресторанами (см. пакет settlement). Репозиторий заданий —
              в базе сервиса, поэтому стартер с JDBC. -->
         <dependency>
