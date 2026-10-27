@@ -85,6 +85,16 @@ class SettlementJobIT extends AbstractIntegrationTest {
         assertEquals(new BigDecimal("150.00"), line.revenue());
     }
 
+    /** Найдено на стенде: после пересчёта обычный запуск того же дня — другой экземпляр задания. */
+    @Test
+    void shouldRefusePlainRunAfterTheDayWasComputedByRerun() {
+        LocalDate day = uniqueDay();
+        delivered(testData.insertRestaurant(), "100.00", day.atTime(12, 0).atZone(MOSCOW).toOffsetDateTime());
+        service.run(day, true);
+
+        assertThrows(BusinessRuleViolationException.class, () -> service.run(day, false));
+    }
+
     @Test
     void shouldServeOwnSettlementsAsJsonAndCsvAndLetOnlyAdminRunJob() throws Exception {
         LocalDate day = uniqueDay();
