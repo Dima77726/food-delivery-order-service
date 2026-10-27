@@ -63,6 +63,7 @@ public class OrderService {
     private final AuditService auditService;
     private final CheckoutPricing checkoutPricing;
     private final OrderTermsRepository orderTermsRepository;
+    private final com.dima.fooddelivery.pricing.PricingProperties pricingProperties;
     private final PromoService promoService;
 
     /**
@@ -376,6 +377,17 @@ public class OrderService {
     @Transactional
     public OrderResponse startCookingOrder(Long restaurantId, Long orderId) {
         OrderAccess access = requireRestaurantOrder(restaurantId, orderId);
+
+        // Заказ ко времени: подтвердить его можно сразу, а готовить — не раньше окна перед сроком,
+        // иначе к приезду курьера еда остынет.
+        orderTermsRepository.find(orderId)
+                .map(OrderTermsRepository.OrderTerms::scheduledFor)
+                .filter(at -> java.time.OffsetDateTime.now().isBefore(at.minus(pricingProperties.acceptWindow())))
+                .ifPresent(at -> {
+                    throw new BusinessRuleViolationException("Заказ ко времени " + at.atZoneSameInstant(java.time.ZoneId.of("Europe/Moscow"))
+                            .toLocalTime().withSecond(0).withNano(0) + ": готовить можно не раньше чем за "
+                            + pricingProperties.acceptWindow().toMinutes() + " минут");
+                });
 
         if (!access.status().canStartCookingByRestaurant()) {
             throw new BusinessRuleViolationException(
