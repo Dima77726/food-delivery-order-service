@@ -51,4 +51,24 @@ public class OrderEventRepository {
                 OrderRowMappers.ORDER_EVENT
         );
     }
+
+    /**
+     * События заказа новее {@code afterId} — для живого потока клиента, который догоняет
+     * историю с места, где остановился.
+     */
+    public List<OrderEvent> findByOrderIdAfter(Long orderId, long afterId) {
+        return jdbc.query(
+                """
+                        SELECT e.id, e.order_id, e.event_type, e.description, e.created_at
+                        FROM customer_order_event e
+                        WHERE e.order_id = :orderId
+                          AND e.id > :afterId
+                        ORDER BY e.id ASC
+                        """,
+                new MapSqlParameterSource()
+                        .addValue("orderId", orderId)
+                        .addValue("afterId", afterId),
+                OrderRowMappers.ORDER_EVENT
+        );
+    }
 }

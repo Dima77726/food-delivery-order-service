@@ -1,6 +1,7 @@
 package com.dima.fooddelivery.common.security;
 
 import com.dima.fooddelivery.common.web.UserIdMdcFilter;
+import jakarta.servlet.DispatcherType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.security.autoconfigure.actuate.web.servlet.EndpointRequest;
@@ -86,6 +87,10 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // Повторный проход асинхронного запроса (SSE, long polling) — продолжение
+                        // уже разрешённого: права проверены на первом проходе, а второй приходит
+                        // без токена в контексте и иначе превратился бы в 401 посреди потока.
+                        .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         .requestMatchers(HttpMethod.GET, PUBLIC_GET_PATHS).permitAll()
                         .requestMatchers(HttpMethod.GET, WSDL_PATH).permitAll()
                         .requestMatchers("/api/v1/admin/**").hasRole(ADMIN_ROLE)
