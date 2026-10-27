@@ -21,7 +21,7 @@
         <!-- Ветка 3.x springdoc — единственная, совместимая со Spring Boot 4 / Framework 7. -->
         <springdoc.version>3.1.0</springdoc.version>
         <!-- Версия контрактов своя, отдельно от версии сервиса: см. food-delivery-contracts. -->
-        <contracts.version>1.3.2</contracts.version>
+        <contracts.version>1.4.0</contracts.version>
         <!-- Нужны Spring WS для WSDL и включения общей части схемы; в стартер не входят. -->
         <wsdl4j.version>1.6.3</wsdl4j.version>
         <xmlschema.version>2.3.1</xmlschema.version>
