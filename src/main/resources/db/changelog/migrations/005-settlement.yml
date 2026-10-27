@@ -1,0 +1,9 @@
+databaseChangeLog:
+  - changeSet:
+      id: 005-settlement
+      author: dima
+      changes:
+        - sqlFile:
+            path: sql/005-settlement.sql
+            relativeToChangelogFile: true
+            splitStatements: true
