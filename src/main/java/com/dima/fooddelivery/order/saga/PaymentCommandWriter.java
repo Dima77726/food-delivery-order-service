@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -48,7 +49,20 @@ public class PaymentCommandWriter {
         append(order, PaymentCommand.REFUND_REQUESTED, null, null);
     }
 
+    /**
+     * Частичный возврат: та же команда REFUND_REQUESTED, но с суммой меньше заказа и ключом идемпотентности
+     * заявки — по ключу сервис платежей отличает частичный возврат от полного и не вернёт одну заявку дважды.
+     * Контракт события при этом не меняется: сумма в команде была и раньше.
+     */
+    public void requestPartialRefund(OrderAccess order, BigDecimal amount, UUID refundRequestKey) {
+        append(order, PaymentCommand.REFUND_REQUESTED, null, "partial-refund:" + refundRequestKey, amount);
+    }
+
     private void append(OrderAccess order, String commandType, String method, String idempotencyKey) {
+        append(order, commandType, method, idempotencyKey, order.totalAmount());
+    }
+
+    private void append(OrderAccess order, String commandType, String method, String idempotencyKey, BigDecimal amount) {
         UUID commandId = UUID.randomUUID();
 
         PaymentCommand command = new PaymentCommand(
@@ -57,7 +71,7 @@ public class PaymentCommandWriter {
                 commandType,
                 order.orderId(),
                 order.customerId(),
-                order.totalAmount(),
+                amount,
                 method,
                 idempotencyKey,
                 OffsetDateTime.now()
