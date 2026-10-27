@@ -5,6 +5,7 @@ import com.dima.fooddelivery.order.api.OrderResponse;
 import com.dima.fooddelivery.order.domain.DeliveryAddress;
 import com.dima.fooddelivery.order.service.OrderService;
 import com.dima.fooddelivery.promo.PromoRepository.PromoCode;
+import com.dima.fooddelivery.promo.PromoBloomFilter;
 import com.dima.fooddelivery.promo.PromoService;
 import com.dima.fooddelivery.support.AbstractIntegrationTest;
 import org.junit.jupiter.api.Test;
@@ -28,6 +29,7 @@ import java.util.concurrent.ThreadLocalRandom;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -97,6 +99,21 @@ class CheckoutPricingIT extends AbstractIntegrationTest {
         Cart other = cart("300.00");
         assertThrows(BusinessRuleViolationException.class, () -> orderService.createOrderFromActiveCart(
                 other.customerId(), other.restaurantId(), ADDRESS, new CheckoutPricing.Options("NO-SUCH-CODE-" + other.customerId(), null, null)));
+    }
+
+    /** Фильтр вытеснен из Redis (allkeys-lru): коды по-прежнему находятся, а новый код возвращает фильтр целиком. */
+    @Test
+    void shouldFallBackToDatabaseWhenBloomFilterIsEvicted() {
+        String old = promo(PromoCode.Type.FIXED, "50", 100);
+        redis.delete(PromoBloomFilter.KEY);
+        Cart cart = cart("300.00");
+
+        assertEquals(0, new BigDecimal("50").compareTo(promoService.preview(old, cart.customerId(), cart.restaurantId(), new BigDecimal("300.00"))));
+
+        String fresh = promo(PromoCode.Type.FIXED, "30", 100);
+        assertTrue(redis.hasKey(PromoBloomFilter.KEY));
+        assertEquals(0, new BigDecimal("50").compareTo(promoService.preview(old, cart.customerId(), cart.restaurantId(), new BigDecimal("300.00"))));
+        assertEquals(0, new BigDecimal("30").compareTo(promoService.preview(fresh, cart.customerId(), cart.restaurantId(), new BigDecimal("300.00"))));
     }
 
     /** Последний экземпляр промокода: из восьми одновременных оформлений проходит ровно одно. */

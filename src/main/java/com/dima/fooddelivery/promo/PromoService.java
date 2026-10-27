@@ -73,7 +73,9 @@ public class PromoService {
 
     public void create(PromoCode promo) {
         repository.insert(promo);
-        filter.add(promo.code());
+        if (!filter.add(promo.code())) {
+            rebuildFilter();
+        }
     }
 
     public List<PromoCode> list() {
