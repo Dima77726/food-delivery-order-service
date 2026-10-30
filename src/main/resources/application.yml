@@ -215,3 +215,11 @@ camunda:
     mode: self-managed
     grpc-address: ${CAMUNDA_GRPC_ADDRESS:http://localhost:26500}
     rest-address: ${CAMUNDA_REST_ADDRESS:http://localhost:8091}
+    # gRPC, а не REST: по REST задания забираются длинным опросом, и клиент рвёт его по своему
+    # же таймауту — в логе каждые 10 с «Failed to activate jobs ... SocketTimeoutException».
+    prefer-rest-over-grpc: false
+    worker:
+      defaults:
+        # Брокер сам отдаёт задание по открытому потоку, как только оно появилось: шаг процесса
+        # выполняется сразу, а не на следующем опросе.
+        stream-enabled: true
