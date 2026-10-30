@@ -1,0 +1,353 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Жизненный цикл заказа (order-service, режим app.saga.engine=camunda): сага оплаты и дальше,
+  от ресторана до доставки. Код процесса — OrderLifecycleProcess, задания — OrderLifecycleWorkers,
+  сообщения о статусах — OrderStatusMessageListener.
+-->
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
+                  xmlns:modeler="http://camunda.org/schema/modeler/1.0"
+                  id="order-lifecycle-definitions"
+                  targetNamespace="http://dima.com/food-delivery/order"
+                  exporter="food-delivery-order-service"
+                  modeler:executionPlatform="Camunda Cloud"
+                  modeler:executionPlatformVersion="8.10.0">
+
+  <bpmn:message id="msg-payment-succeeded" name="payment-succeeded">
+    <bpmn:extensionElements><zeebe:subscription correlationKey="=string(orderId)"/></bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:message id="msg-payment-failed" name="payment-failed">
+    <bpmn:extensionElements><zeebe:subscription correlationKey="=string(orderId)"/></bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:message id="msg-order-canceled" name="order-canceled">
+    <bpmn:extensionElements><zeebe:subscription correlationKey="=string(orderId)"/></bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:message id="msg-order-accepted" name="order-accepted">
+    <bpmn:extensionElements><zeebe:subscription correlationKey="=string(orderId)"/></bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:message id="msg-order-cooking" name="order-cooking">
+    <bpmn:extensionElements><zeebe:subscription correlationKey="=string(orderId)"/></bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:message id="msg-order-ready" name="order-ready">
+    <bpmn:extensionElements><zeebe:subscription correlationKey="=string(orderId)"/></bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:message id="msg-order-in-delivery" name="order-in-delivery">
+    <bpmn:extensionElements><zeebe:subscription correlationKey="=string(orderId)"/></bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:message id="msg-order-delivered" name="order-delivered">
+    <bpmn:extensionElements><zeebe:subscription correlationKey="=string(orderId)"/></bpmn:extensionElements>
+  </bpmn:message>
+
+  <bpmn:process id="order-lifecycle" name="Жизненный цикл заказа" isExecutable="true">
+
+    <bpmn:startEvent id="payment-requested" name="Оплата запрошена">
+      <bpmn:outgoing>flow-start</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <bpmn:eventBasedGateway id="await-outcome" name="Ждём исход оплаты">
+      <bpmn:incoming>flow-start</bpmn:incoming>
+      <bpmn:outgoing>flow-to-succeeded</bpmn:outgoing>
+      <bpmn:outgoing>flow-to-failed</bpmn:outgoing>
+      <bpmn:outgoing>flow-to-timeout</bpmn:outgoing>
+      <bpmn:outgoing>flow-to-canceled</bpmn:outgoing>
+    </bpmn:eventBasedGateway>
+
+    <!-- Оплата прошла: дальше ресторан и курьер -->
+    <bpmn:intermediateCatchEvent id="payment-succeeded" name="Оплата прошла">
+      <bpmn:incoming>flow-to-succeeded</bpmn:incoming>
+      <bpmn:outgoing>flow-succeeded</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="payment-succeeded-def" messageRef="msg-payment-succeeded"/>
+    </bpmn:intermediateCatchEvent>
+    <bpmn:serviceTask id="mark-paid" name="Заказ оплачен">
+      <bpmn:extensionElements><zeebe:taskDefinition type="order-mark-paid" retries="3"/></bpmn:extensionElements>
+      <bpmn:incoming>flow-succeeded</bpmn:incoming>
+      <bpmn:outgoing>flow-to-fulfillment</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:subProcess id="fulfillment" name="Выполнение заказа">
+      <bpmn:incoming>flow-to-fulfillment</bpmn:incoming>
+      <bpmn:outgoing>flow-fulfilled</bpmn:outgoing>
+
+      <bpmn:startEvent id="fulfillment-start">
+        <bpmn:outgoing>flow-f-start</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:receiveTask id="await-accepted" name="Ресторан принимает" messageRef="msg-order-accepted">
+        <bpmn:incoming>flow-f-start</bpmn:incoming>
+        <bpmn:outgoing>flow-f-accepted</bpmn:outgoing>
+      </bpmn:receiveTask>
+      <bpmn:receiveTask id="await-cooking" name="Ресторан начинает готовить" messageRef="msg-order-cooking">
+        <bpmn:incoming>flow-f-accepted</bpmn:incoming>
+        <bpmn:outgoing>flow-f-cooking</bpmn:outgoing>
+      </bpmn:receiveTask>
+      <bpmn:receiveTask id="await-ready" name="Готовится" messageRef="msg-order-ready">
+        <bpmn:incoming>flow-f-cooking</bpmn:incoming>
+        <bpmn:outgoing>flow-f-ready</bpmn:outgoing>
+      </bpmn:receiveTask>
+      <bpmn:receiveTask id="await-in-delivery" name="Ждёт курьера" messageRef="msg-order-in-delivery">
+        <bpmn:incoming>flow-f-ready</bpmn:incoming>
+        <bpmn:outgoing>flow-f-in-delivery</bpmn:outgoing>
+      </bpmn:receiveTask>
+      <bpmn:receiveTask id="await-delivered" name="Курьер везёт" messageRef="msg-order-delivered">
+        <bpmn:incoming>flow-f-in-delivery</bpmn:incoming>
+        <bpmn:outgoing>flow-f-delivered</bpmn:outgoing>
+      </bpmn:receiveTask>
+      <bpmn:endEvent id="fulfillment-end">
+        <bpmn:incoming>flow-f-delivered</bpmn:incoming>
+      </bpmn:endEvent>
+
+      <!-- Ресторан долго не принимает: напоминание, процесс ждёт дальше -->
+      <bpmn:boundaryEvent id="acceptance-sla" name="SLA принятия" attachedToRef="await-accepted" cancelActivity="false">
+        <bpmn:outgoing>flow-f-sla</bpmn:outgoing>
+        <bpmn:timerEventDefinition id="acceptance-sla-def">
+          <bpmn:timeDuration>=duration(acceptanceSla)</bpmn:timeDuration>
+        </bpmn:timerEventDefinition>
+      </bpmn:boundaryEvent>
+      <bpmn:serviceTask id="acceptance-overdue" name="Эскалация: ресторан молчит">
+        <bpmn:extensionElements><zeebe:taskDefinition type="order-acceptance-overdue" retries="3"/></bpmn:extensionElements>
+        <bpmn:incoming>flow-f-sla</bpmn:incoming>
+        <bpmn:outgoing>flow-f-escalated</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:endEvent id="acceptance-escalated" name="Эскалация отправлена">
+        <bpmn:incoming>flow-f-escalated</bpmn:incoming>
+      </bpmn:endEvent>
+
+      <bpmn:sequenceFlow id="flow-f-start" sourceRef="fulfillment-start" targetRef="await-accepted"/>
+      <bpmn:sequenceFlow id="flow-f-accepted" sourceRef="await-accepted" targetRef="await-cooking"/>
+      <bpmn:sequenceFlow id="flow-f-cooking" sourceRef="await-cooking" targetRef="await-ready"/>
+      <bpmn:sequenceFlow id="flow-f-ready" sourceRef="await-ready" targetRef="await-in-delivery"/>
+      <bpmn:sequenceFlow id="flow-f-in-delivery" sourceRef="await-in-delivery" targetRef="await-delivered"/>
+      <bpmn:sequenceFlow id="flow-f-delivered" sourceRef="await-delivered" targetRef="fulfillment-end"/>
+      <bpmn:sequenceFlow id="flow-f-sla" sourceRef="acceptance-sla" targetRef="acceptance-overdue"/>
+      <bpmn:sequenceFlow id="flow-f-escalated" sourceRef="acceptance-overdue" targetRef="acceptance-escalated"/>
+    </bpmn:subProcess>
+
+    <bpmn:endEvent id="delivered" name="Доставлен">
+      <bpmn:incoming>flow-fulfilled</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- Клиент отменил оплаченный заказ: статус и возврат уже сделал OrderService -->
+    <bpmn:boundaryEvent id="canceled-after-payment" name="Клиент отменил" attachedToRef="fulfillment">
+      <bpmn:outgoing>flow-canceled-after-payment</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="canceled-after-payment-def" messageRef="msg-order-canceled"/>
+    </bpmn:boundaryEvent>
+    <bpmn:endEvent id="canceled-paid" name="Отменён после оплаты">
+      <bpmn:incoming>flow-canceled-after-payment</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- Банк отказал -->
+    <bpmn:intermediateCatchEvent id="payment-failed" name="Оплата не прошла">
+      <bpmn:incoming>flow-to-failed</bpmn:incoming>
+      <bpmn:outgoing>flow-failed</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="payment-failed-def" messageRef="msg-payment-failed"/>
+    </bpmn:intermediateCatchEvent>
+    <bpmn:serviceTask id="cancel-payment-failed" name="Отменить заказ">
+      <bpmn:extensionElements><zeebe:taskDefinition type="order-cancel-payment-failed" retries="3"/></bpmn:extensionElements>
+      <bpmn:incoming>flow-failed</bpmn:incoming>
+      <bpmn:outgoing>flow-failed-canceled</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="canceled-payment-failed" name="Отменён: отказ оплаты">
+      <bpmn:incoming>flow-failed-canceled</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- Исхода оплаты нет дольше срока -->
+    <bpmn:intermediateCatchEvent id="payment-timeout" name="Срок оплаты вышел">
+      <bpmn:incoming>flow-to-timeout</bpmn:incoming>
+      <bpmn:outgoing>flow-timeout</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="payment-timeout-def">
+        <bpmn:timeDuration>=duration(paymentTimeout)</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:intermediateCatchEvent>
+    <bpmn:serviceTask id="expire-payment" name="Отменить и вернуть деньги">
+      <bpmn:extensionElements><zeebe:taskDefinition type="order-expire-payment" retries="3"/></bpmn:extensionElements>
+      <bpmn:incoming>flow-timeout</bpmn:incoming>
+      <bpmn:outgoing>flow-expired</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="canceled-timeout" name="Отменён по таймауту">
+      <bpmn:incoming>flow-expired</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- Клиент отменил, пока шла оплата -->
+    <bpmn:intermediateCatchEvent id="order-canceled" name="Клиент отменил заказ">
+      <bpmn:incoming>flow-to-canceled</bpmn:incoming>
+      <bpmn:outgoing>flow-canceled</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="order-canceled-def" messageRef="msg-order-canceled"/>
+    </bpmn:intermediateCatchEvent>
+    <bpmn:endEvent id="canceled-by-customer" name="Отменён клиентом">
+      <bpmn:incoming>flow-canceled</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="flow-start" sourceRef="payment-requested" targetRef="await-outcome"/>
+    <bpmn:sequenceFlow id="flow-to-succeeded" sourceRef="await-outcome" targetRef="payment-succeeded"/>
+    <bpmn:sequenceFlow id="flow-to-failed" sourceRef="await-outcome" targetRef="payment-failed"/>
+    <bpmn:sequenceFlow id="flow-to-timeout" sourceRef="await-outcome" targetRef="payment-timeout"/>
+    <bpmn:sequenceFlow id="flow-to-canceled" sourceRef="await-outcome" targetRef="order-canceled"/>
+    <bpmn:sequenceFlow id="flow-succeeded" sourceRef="payment-succeeded" targetRef="mark-paid"/>
+    <bpmn:sequenceFlow id="flow-to-fulfillment" sourceRef="mark-paid" targetRef="fulfillment"/>
+    <bpmn:sequenceFlow id="flow-fulfilled" sourceRef="fulfillment" targetRef="delivered"/>
+    <bpmn:sequenceFlow id="flow-canceled-after-payment" sourceRef="canceled-after-payment" targetRef="canceled-paid"/>
+    <bpmn:sequenceFlow id="flow-failed" sourceRef="payment-failed" targetRef="cancel-payment-failed"/>
+    <bpmn:sequenceFlow id="flow-failed-canceled" sourceRef="cancel-payment-failed" targetRef="canceled-payment-failed"/>
+    <bpmn:sequenceFlow id="flow-timeout" sourceRef="payment-timeout" targetRef="expire-payment"/>
+    <bpmn:sequenceFlow id="flow-expired" sourceRef="expire-payment" targetRef="canceled-timeout"/>
+    <bpmn:sequenceFlow id="flow-canceled" sourceRef="order-canceled" targetRef="canceled-by-customer"/>
+  </bpmn:process>
+
+  <bpmndi:BPMNDiagram id="order-lifecycle-diagram">
+    <bpmndi:BPMNPlane id="order-lifecycle-plane" bpmnElement="order-lifecycle">
+      <bpmndi:BPMNShape id="payment-requested_di" bpmnElement="payment-requested">
+        <dc:Bounds x="152" y="232" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="await-outcome_di" bpmnElement="await-outcome">
+        <dc:Bounds x="245" y="225" width="50" height="50"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="payment-succeeded_di" bpmnElement="payment-succeeded">
+        <dc:Bounds x="372" y="122" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="mark-paid_di" bpmnElement="mark-paid">
+        <dc:Bounds x="460" y="100" width="120" height="80"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="fulfillment_di" bpmnElement="fulfillment" isExpanded="true">
+        <dc:Bounds x="640" y="40" width="980" height="240"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="fulfillment-start_di" bpmnElement="fulfillment-start">
+        <dc:Bounds x="672" y="122" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="await-accepted_di" bpmnElement="await-accepted">
+        <dc:Bounds x="740" y="100" width="110" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="await-cooking_di" bpmnElement="await-cooking">
+        <dc:Bounds x="890" y="100" width="110" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="await-ready_di" bpmnElement="await-ready">
+        <dc:Bounds x="1040" y="100" width="110" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="await-in-delivery_di" bpmnElement="await-in-delivery">
+        <dc:Bounds x="1190" y="100" width="110" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="await-delivered_di" bpmnElement="await-delivered">
+        <dc:Bounds x="1340" y="100" width="110" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="fulfillment-end_di" bpmnElement="fulfillment-end">
+        <dc:Bounds x="1522" y="122" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="acceptance-sla_di" bpmnElement="acceptance-sla">
+        <dc:Bounds x="777" y="162" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="acceptance-overdue_di" bpmnElement="acceptance-overdue">
+        <dc:Bounds x="840" y="206" width="120" height="60"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="acceptance-escalated_di" bpmnElement="acceptance-escalated">
+        <dc:Bounds x="1002" y="218" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="delivered_di" bpmnElement="delivered">
+        <dc:Bounds x="1682" y="142" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="canceled-after-payment_di" bpmnElement="canceled-after-payment">
+        <dc:Bounds x="1442" y="262" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="canceled-paid_di" bpmnElement="canceled-paid">
+        <dc:Bounds x="1522" y="322" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="payment-failed_di" bpmnElement="payment-failed">
+        <dc:Bounds x="372" y="332" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="cancel-payment-failed_di" bpmnElement="cancel-payment-failed">
+        <dc:Bounds x="460" y="310" width="120" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="canceled-payment-failed_di" bpmnElement="canceled-payment-failed">
+        <dc:Bounds x="642" y="332" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="payment-timeout_di" bpmnElement="payment-timeout">
+        <dc:Bounds x="372" y="442" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="expire-payment_di" bpmnElement="expire-payment">
+        <dc:Bounds x="460" y="420" width="120" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="canceled-timeout_di" bpmnElement="canceled-timeout">
+        <dc:Bounds x="642" y="442" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="order-canceled_di" bpmnElement="order-canceled">
+        <dc:Bounds x="372" y="552" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="canceled-by-customer_di" bpmnElement="canceled-by-customer">
+        <dc:Bounds x="642" y="552" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="flow-start_di" bpmnElement="flow-start">
+        <di:waypoint x="188" y="250"/><di:waypoint x="245" y="250"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-to-succeeded_di" bpmnElement="flow-to-succeeded">
+        <di:waypoint x="270" y="225"/><di:waypoint x="270" y="140"/><di:waypoint x="372" y="140"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-to-failed_di" bpmnElement="flow-to-failed">
+        <di:waypoint x="270" y="275"/><di:waypoint x="270" y="350"/><di:waypoint x="372" y="350"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-to-timeout_di" bpmnElement="flow-to-timeout">
+        <di:waypoint x="270" y="275"/><di:waypoint x="270" y="460"/><di:waypoint x="372" y="460"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-to-canceled_di" bpmnElement="flow-to-canceled">
+        <di:waypoint x="270" y="275"/><di:waypoint x="270" y="570"/><di:waypoint x="372" y="570"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-succeeded_di" bpmnElement="flow-succeeded">
+        <di:waypoint x="408" y="140"/><di:waypoint x="460" y="140"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-to-fulfillment_di" bpmnElement="flow-to-fulfillment">
+        <di:waypoint x="580" y="140"/><di:waypoint x="640" y="140"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-f-start_di" bpmnElement="flow-f-start">
+        <di:waypoint x="708" y="140"/><di:waypoint x="740" y="140"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-f-accepted_di" bpmnElement="flow-f-accepted">
+        <di:waypoint x="850" y="140"/><di:waypoint x="890" y="140"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-f-cooking_di" bpmnElement="flow-f-cooking">
+        <di:waypoint x="1000" y="140"/><di:waypoint x="1040" y="140"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-f-ready_di" bpmnElement="flow-f-ready">
+        <di:waypoint x="1150" y="140"/><di:waypoint x="1190" y="140"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-f-in-delivery_di" bpmnElement="flow-f-in-delivery">
+        <di:waypoint x="1300" y="140"/><di:waypoint x="1340" y="140"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-f-delivered_di" bpmnElement="flow-f-delivered">
+        <di:waypoint x="1450" y="140"/><di:waypoint x="1522" y="140"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-f-sla_di" bpmnElement="flow-f-sla">
+        <di:waypoint x="795" y="198"/><di:waypoint x="795" y="236"/><di:waypoint x="840" y="236"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-f-escalated_di" bpmnElement="flow-f-escalated">
+        <di:waypoint x="960" y="236"/><di:waypoint x="1002" y="236"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-fulfilled_di" bpmnElement="flow-fulfilled">
+        <di:waypoint x="1620" y="160"/><di:waypoint x="1682" y="160"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-canceled-after-payment_di" bpmnElement="flow-canceled-after-payment">
+        <di:waypoint x="1460" y="298"/><di:waypoint x="1460" y="340"/><di:waypoint x="1522" y="340"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-failed_di" bpmnElement="flow-failed">
+        <di:waypoint x="408" y="350"/><di:waypoint x="460" y="350"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-failed-canceled_di" bpmnElement="flow-failed-canceled">
+        <di:waypoint x="580" y="350"/><di:waypoint x="642" y="350"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-timeout_di" bpmnElement="flow-timeout">
+        <di:waypoint x="408" y="460"/><di:waypoint x="460" y="460"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-expired_di" bpmnElement="flow-expired">
+        <di:waypoint x="580" y="460"/><di:waypoint x="642" y="460"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="flow-canceled_di" bpmnElement="flow-canceled">
+        <di:waypoint x="408" y="570"/><di:waypoint x="642" y="570"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

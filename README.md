@@ -33,13 +33,14 @@ docker build --secret id=maven_settings,src=$HOME/.m2/settings.xml -t food-deliv
 
 CI публикует образ в `ghcr.io/<владелец>/food-delivery-order-service` на каждый пуш в `main` и `dev`.
 
-## Сага оплаты на Camunda 8
+## Заказ на Camunda 8
 
 По умолчанию сагу оплаты ведёт сам сервис (`order/saga/PaymentSaga`, таймаут — `PaymentTimeoutJob`).
-С `SAGA_ENGINE=camunda` и `CAMUNDA_CLIENT_ENABLED=true` ожидание исхода ведёт процесс
-[`payment-saga`](src/main/resources/bpmn/payment-saga.bpmn) в Camunda 8 (пакет `order/saga/camunda`):
-исходы из Kafka становятся сообщениями процесса, таймаут — его таймером, реакции — обработчиками
-заданий. Сервис деплоит процесс сам при старте. Адреса брокера — `CAMUNDA_GRPC_ADDRESS`
+С `SAGA_ENGINE=camunda` и `CAMUNDA_CLIENT_ENABLED=true` заказ ведёт процесс
+[`order-lifecycle`](src/main/resources/bpmn/order-lifecycle.bpmn) в Camunda 8 (пакет `order/saga/camunda`),
+один экземпляр от запроса оплаты до доставки: исходы оплаты из Kafka и смены статусов становятся сообщениями
+процесса, таймаут оплаты и SLA принятия рестораном (`ORDER_ACCEPTANCE_SLA`, 10 мин) — его таймерами, реакции —
+обработчиками заданий. Сервис деплоит процесс сам при старте. Адреса брокера — `CAMUNDA_GRPC_ADDRESS`
 (по умолчанию `http://localhost:26500`) и `CAMUNDA_REST_ADDRESS` (`http://localhost:8091`); в стеке
 платформы Camunda поднимается профилем `bpm` (`./scripts/start.ps1 -Bpm`).
 

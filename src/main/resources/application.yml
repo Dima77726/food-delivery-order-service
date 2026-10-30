@@ -102,9 +102,12 @@ app:
     timeout-check-interval: ${PAYMENT_TIMEOUT_CHECK_INTERVAL:PT1M}
     timeout-check-enabled: ${PAYMENT_TIMEOUT_CHECK_ENABLED:true}
     # Кто ведёт ожидание исхода оплаты: native — этот сервис (PaymentSaga + PaymentTimeoutJob),
-    # camunda — процесс payment-saga в Camunda 8 (пакет order.saga.camunda). Вместе с camunda
+    # camunda — процесс order-lifecycle в Camunda 8 (пакет order.saga.camunda). Вместе с camunda
     # нужно включить клиент: CAMUNDA_CLIENT_ENABLED=true.
     engine: ${SAGA_ENGINE:native}
+    # Только для camunda: сколько оплаченный заказ может ждать ресторана, прежде чем процесс
+    # поднимет эскалацию (метрика orders.acceptance.overdue). Заказ при этом не отменяется.
+    acceptance-sla: ${ORDER_ACCEPTANCE_SLA:PT10M}
 
   live:
     # Живые обновления: SSE заказа и доски ресторана, long polling свободных доставок.

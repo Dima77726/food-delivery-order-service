@@ -37,7 +37,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * Режим {@code app.saga.engine=camunda} без брокера: что сага отдаёт процессу, а что делает сама.
- * Сам процесс (BPMN) проверяет {@link PaymentSagaBpmnTest}, переходы статусов — {@code PaymentSagaIT}.
+ * Сам процесс (BPMN) проверяет {@link OrderLifecycleBpmnTest}, переходы статусов — {@code PaymentSagaIT}.
  */
 class PaymentSagaCamundaModeTest {
 
@@ -45,17 +45,17 @@ class PaymentSagaCamundaModeTest {
     private final OrderStatusService orderStatusService = mock(OrderStatusService.class);
     private final PaymentCommandWriter paymentCommands = mock(PaymentCommandWriter.class);
     private final InboxRepository inbox = mock(InboxRepository.class);
-    private final PaymentProcess process = mock(PaymentProcess.class);
+    private final OrderLifecycleProcess process = mock(OrderLifecycleProcess.class);
 
     private PaymentSaga saga;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
-        ObjectProvider<PaymentProcess> provider = mock(ObjectProvider.class);
+        ObjectProvider<OrderLifecycleProcess> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(process);
         doAnswer(invocation -> {
-            invocation.<Consumer<PaymentProcess>>getArgument(0).accept(process);
+            invocation.<Consumer<OrderLifecycleProcess>>getArgument(0).accept(process);
             return null;
         }).when(provider).ifAvailable(any());
 
@@ -133,17 +133,26 @@ class PaymentSagaCamundaModeTest {
                 eq(List.of(OrderStatus.CREATED, OrderStatus.PAYMENT_PENDING)), anyInt());
     }
 
+    /** Каждая смена статуса уходит процессу; что из этого ему нужно, решает OrderLifecycleProcess. */
     @Test
-    void shouldTellProcessOnlyAboutCancelWhileAwaitingOutcome() {
-        OrderCanceledMessageListener listener = new OrderCanceledMessageListener(process);
+    void shouldPassEveryStatusChangeToProcess() {
+        OrderStatusMessageListener listener = new OrderStatusMessageListener(process);
+        when(process.publishStatus(anyLong(), any())).thenReturn(java.util.Optional.empty());
 
-        listener.onStatusChanged(statusChange(OrderStatus.PAYMENT_PENDING, OrderStatus.CANCELED));
-        listener.onStatusChanged(statusChange(OrderStatus.CREATED, OrderStatus.CANCELED));
+        listener.onStatusChanged(statusChange(OrderStatus.PAID, OrderStatus.ACCEPTED));
         listener.onStatusChanged(statusChange(OrderStatus.PAID, OrderStatus.CANCELED));
-        listener.onStatusChanged(statusChange(OrderStatus.PAYMENT_PENDING, OrderStatus.PAID));
 
-        verify(process).publishOrderCanceled(7L);
-        verify(process).publishOrderCanceled(anyLong());
+        verify(process).publishStatus(7L, OrderStatus.ACCEPTED);
+        verify(process).publishStatus(7L, OrderStatus.CANCELED);
+    }
+
+    /** Сбой Camunda не должен всплывать в поток, который уже закоммитил смену статуса. */
+    @Test
+    void shouldSwallowPublishFailure() {
+        OrderStatusMessageListener listener = new OrderStatusMessageListener(process);
+        when(process.publishStatus(anyLong(), any())).thenThrow(new IllegalStateException("брокер недоступен"));
+
+        listener.onStatusChanged(statusChange(OrderStatus.ACCEPTED, OrderStatus.COOKING));
     }
 
     private static PaymentEvent event(String type) {

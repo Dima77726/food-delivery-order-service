@@ -11,7 +11,7 @@ import com.dima.fooddelivery.order.domain.OrderEventType;
 import com.dima.fooddelivery.order.domain.OrderStatus;
 import com.dima.fooddelivery.order.persistence.InboxRepository;
 import com.dima.fooddelivery.order.persistence.OrderRepository;
-import com.dima.fooddelivery.order.saga.camunda.PaymentProcess;
+import com.dima.fooddelivery.order.saga.camunda.OrderLifecycleProcess;
 import com.dima.fooddelivery.order.service.OrderService;
 import com.dima.fooddelivery.order.service.OrderStatusService;
 import lombok.RequiredArgsConstructor;
@@ -52,7 +52,7 @@ import java.time.Duration;
  *
  * <p><b>Два движка.</b> По умолчанию ({@code app.saga.engine=native}) сага — этот класс и
  * {@link PaymentTimeoutJob}. С {@code app.saga.engine=camunda} ожидание исхода ведёт процесс
- * {@code payment-saga} в Camunda 8 ({@link PaymentProcess}): исходы из Kafka становятся
+ * {@code order-lifecycle} в Camunda 8 ({@link OrderLifecycleProcess}): исходы из Kafka становятся
  * сообщениями процесса, таймаут — его таймером, а реакции — заданиями, которые вызывают
  * {@link #markPaid}, {@link #cancelOnPaymentFailure} и {@link #expireIfAwaiting}. Переходы
  * статусов и outbox в обоих режимах одни и те же.
@@ -67,7 +67,7 @@ public class PaymentSaga {
     private final OrderService orderService;
     private final PaymentCommandWriter paymentCommands;
     private final InboxRepository inbox;
-    private final ObjectProvider<PaymentProcess> paymentProcess;
+    private final ObjectProvider<OrderLifecycleProcess> lifecycleProcess;
 
     /**
      * Клиент просит оплатить заказ. Ответ — заказ в статусе PAYMENT_PENDING: сколько займёт
@@ -124,7 +124,7 @@ public class PaymentSaga {
 
         // В той же транзакции: если Camunda недоступна, запрос откатится целиком, и заказ
         // не останется в PAYMENT_PENDING без процесса, который довёл бы его до исхода.
-        paymentProcess.ifAvailable(process -> process.start(orderId));
+        lifecycleProcess.ifAvailable(process -> process.start(orderId));
 
         log.info("Оплата запрошена: orderId={}, method={}, amount={}", orderId, request.method(), order.totalAmount());
 
@@ -145,7 +145,7 @@ public class PaymentSaga {
             return;
         }
 
-        PaymentProcess process = paymentProcess.getIfAvailable();
+        OrderLifecycleProcess process = lifecycleProcess.getIfAvailable();
         if (process != null && process.handles(event)) {
             // Реакцию выполнит задание процесса; здесь исход только передаётся ему. Сбой
             // публикации откатит и отметку в inbox — сообщение из Kafka придёт снова.
