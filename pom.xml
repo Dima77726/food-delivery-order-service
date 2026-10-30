@@ -32,8 +32,13 @@
         <wsdl4j.version>1.6.3</wsdl4j.version>
         <xmlschema.version>2.3.1</xmlschema.version>
         <spring-grpc.version>1.0.3</spring-grpc.version>
-        <protobuf-java.version>4.33.4</protobuf-java.version>
+        <!-- Не ниже gencode всех зависимостей: клиент Camunda 8.10 сгенерирован protoc 4.34.2,
+             и со старым runtime падает при первом же запросе (ProtobufRuntimeVersionException).
+             Новый runtime со старым gencode (grpc-contracts) совместим. -->
+        <protobuf-java.version>4.34.2</protobuf-java.version>
         <resilience4j.version>2.3.0</resilience4j.version>
+        <!-- Клиент Camunda 8 (Zeebe): сага оплаты как BPMN-процесс, режим app.saga.engine=camunda. -->
+        <camunda.version>8.10.7</camunda.version>
     </properties>
 
     <!--
@@ -197,6 +202,14 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-kafka</artifactId>
+        </dependency>
+
+        <!-- Сага оплаты на Camunda 8: процесс bpmn/payment-saga.bpmn и его обработчики заданий.
+             По умолчанию клиент выключен (camunda.client.enabled), и сервис работает как раньше. -->
+        <dependency>
+            <groupId>io.camunda</groupId>
+            <artifactId>camunda-spring-boot-starter</artifactId>
+            <version>${camunda.version}</version>
         </dependency>
 
         <!-- Все модули сервиса — на Spring JDBC; Hibernate здесь не нужен. -->

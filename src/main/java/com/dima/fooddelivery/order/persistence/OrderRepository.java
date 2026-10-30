@@ -17,6 +17,7 @@ import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -434,20 +435,21 @@ public class OrderRepository {
     }
 
     /**
-     * Заказы, ждущие оплаты дольше срока: в статусе CREATED или PAYMENT_PENDING и без изменений
-     * с {@code cutoff}. Отсчёт по {@code updated_at}, а не по {@code created_at}: запрос оплаты
+     * Заказы, ждущие оплаты дольше срока: в одном из {@code statuses} (CREATED, PAYMENT_PENDING)
+     * и без изменений с {@code cutoff}. Отсчёт по {@code updated_at}, а не по {@code created_at}: запрос оплаты
      * продлевает ожидание — клиент как раз платит, и отменять заказ у него из-под рук нельзя.
      */
-    public List<OrderAccess> findAwaitingPaymentSince(OffsetDateTime cutoff, int limit) {
+    public List<OrderAccess> findAwaitingPaymentSince(OffsetDateTime cutoff, Collection<OrderStatus> statuses, int limit) {
         SqlParameterSource params = new MapSqlParameterSource()
                 .addValue("cutoff", cutoff)
+                .addValue("statuses", statuses.stream().map(OrderStatus::getDbValue).toList())
                 .addValue("limit", limit);
 
         return jdbc.query(
                 """
                         SELECT co.id, co.customer_id, co.restaurant_id, co.status, co.total_amount
                         FROM customer_order co
-                        WHERE co.status IN ('CREATED', 'PAYMENT_PENDING')
+                        WHERE co.status IN (:statuses)
                           AND co.updated_at < :cutoff
                         ORDER BY co.updated_at
                         LIMIT :limit

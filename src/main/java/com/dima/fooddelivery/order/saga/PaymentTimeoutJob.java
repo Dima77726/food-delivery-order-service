@@ -1,6 +1,7 @@
 package com.dima.fooddelivery.order.saga;
 
 import com.dima.fooddelivery.order.domain.OrderAccess;
+import com.dima.fooddelivery.order.domain.OrderStatus;
 import com.dima.fooddelivery.order.persistence.OrderRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,6 +22,10 @@ import java.util.List;
  *
  * <p>Несколько экземпляров сервиса могут выполнять задачу одновременно: отмена — это
  * compare-and-set по статусу, и второй экземпляр просто проиграет гонку.
+ *
+ * <p>С {@code app.saga.engine=camunda} оплаченный, но не дождавшийся исхода заказ (PAYMENT_PENDING)
+ * отменяет таймер процесса {@code payment-saga}, а задача следит только за заказами, оплату
+ * которых так и не запросили (CREATED): процесса у них нет.
  */
 @Slf4j
 @Component
@@ -32,21 +37,27 @@ public class PaymentTimeoutJob {
     private final OrderRepository orderRepository;
     private final PaymentSaga paymentSaga;
     private final Duration timeout;
+    private final List<OrderStatus> statuses;
 
     public PaymentTimeoutJob(
             OrderRepository orderRepository,
             PaymentSaga paymentSaga,
-            @Value("${app.saga.payment-timeout:PT15M}") Duration timeout
+            @Value("${app.saga.payment-timeout:PT15M}") Duration timeout,
+            @Value("${app.saga.engine:native}") String engine
     ) {
         this.orderRepository = orderRepository;
         this.paymentSaga = paymentSaga;
         this.timeout = timeout;
+        this.statuses = "camunda".equals(engine)
+                ? List.of(OrderStatus.CREATED)
+                : List.of(OrderStatus.CREATED, OrderStatus.PAYMENT_PENDING);
     }
 
     @Scheduled(fixedDelayString = "${app.saga.timeout-check-interval:PT1M}")
     public void cancelExpired() {
         List<OrderAccess> expired = orderRepository.findAwaitingPaymentSince(
                 OffsetDateTime.now().minus(timeout),
+                statuses,
                 BATCH_SIZE
         );
 

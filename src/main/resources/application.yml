@@ -101,6 +101,10 @@ app:
     payment-timeout: ${PAYMENT_TIMEOUT:PT15M}
     timeout-check-interval: ${PAYMENT_TIMEOUT_CHECK_INTERVAL:PT1M}
     timeout-check-enabled: ${PAYMENT_TIMEOUT_CHECK_ENABLED:true}
+    # Кто ведёт ожидание исхода оплаты: native — этот сервис (PaymentSaga + PaymentTimeoutJob),
+    # camunda — процесс payment-saga в Camunda 8 (пакет order.saga.camunda). Вместе с camunda
+    # нужно включить клиент: CAMUNDA_CLIENT_ENABLED=true.
+    engine: ${SAGA_ENGINE:native}
 
   live:
     # Живые обновления: SSE заказа и доски ресторана, long polling свободных доставок.
@@ -202,3 +206,12 @@ logging:
   level:
     root: INFO
     com.dima.fooddelivery: DEBUG
+
+# Клиент Camunda 8. Выключен по умолчанию: без SAGA_ENGINE=camunda он не нужен, а включённый
+# пытался бы подключиться к брокеру и при старте, и в тестах.
+camunda:
+  client:
+    enabled: ${CAMUNDA_CLIENT_ENABLED:false}
+    mode: self-managed
+    grpc-address: ${CAMUNDA_GRPC_ADDRESS:http://localhost:26500}
+    rest-address: ${CAMUNDA_REST_ADDRESS:http://localhost:8091}
