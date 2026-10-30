@@ -11,10 +11,12 @@ import com.dima.fooddelivery.order.domain.OrderEventType;
 import com.dima.fooddelivery.order.domain.OrderStatus;
 import com.dima.fooddelivery.order.persistence.InboxRepository;
 import com.dima.fooddelivery.order.persistence.OrderRepository;
+import com.dima.fooddelivery.order.saga.camunda.PaymentProcess;
 import com.dima.fooddelivery.order.service.OrderService;
 import com.dima.fooddelivery.order.service.OrderStatusService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,6 +49,13 @@ import java.time.Duration;
  * PAYMENT_SUCCEEDED приходит к отменённому заказу и ничего не меняет: команда на возврат
  * ушла при отмене, и сервис платежей обработает её после списания — команды одного заказа
  * идут в одной партиции, по порядку.
+ *
+ * <p><b>Два движка.</b> По умолчанию ({@code app.saga.engine=native}) сага — этот класс и
+ * {@link PaymentTimeoutJob}. С {@code app.saga.engine=camunda} ожидание исхода ведёт процесс
+ * {@code payment-saga} в Camunda 8 ({@link PaymentProcess}): исходы из Kafka становятся
+ * сообщениями процесса, таймаут — его таймером, а реакции — заданиями, которые вызывают
+ * {@link #markPaid}, {@link #cancelOnPaymentFailure} и {@link #expireIfAwaiting}. Переходы
+ * статусов и outbox в обоих режимах одни и те же.
  */
 @Slf4j
 @Service
@@ -58,6 +67,7 @@ public class PaymentSaga {
     private final OrderService orderService;
     private final PaymentCommandWriter paymentCommands;
     private final InboxRepository inbox;
+    private final ObjectProvider<PaymentProcess> paymentProcess;
 
     /**
      * Клиент просит оплатить заказ. Ответ — заказ в статусе PAYMENT_PENDING: сколько займёт
@@ -112,6 +122,10 @@ public class PaymentSaga {
         // Сумма — из заказа, а не из запроса: иначе клиент платил бы столько, сколько захочет.
         paymentCommands.requestPayment(order, request.method(), request.idempotencyKey());
 
+        // В той же транзакции: если Camunda недоступна, запрос откатится целиком, и заказ
+        // не останется в PAYMENT_PENDING без процесса, который довёл бы его до исхода.
+        paymentProcess.ifAvailable(process -> process.start(orderId));
+
         log.info("Оплата запрошена: orderId={}, method={}, amount={}", orderId, request.method(), order.totalAmount());
 
         return OrderResponseMapper.toResponse(orderService.requireOrder(orderId));
@@ -131,9 +145,17 @@ public class PaymentSaga {
             return;
         }
 
+        PaymentProcess process = paymentProcess.getIfAvailable();
+        if (process != null && process.handles(event)) {
+            // Реакцию выполнит задание процесса; здесь исход только передаётся ему. Сбой
+            // публикации откатит и отметку в inbox — сообщение из Kafka придёт снова.
+            process.publishOutcome(event);
+            return;
+        }
+
         switch (event.eventType()) {
-            case PaymentEvent.PAYMENT_SUCCEEDED -> onSucceeded(event);
-            case PaymentEvent.PAYMENT_FAILED -> onFailed(event);
+            case PaymentEvent.PAYMENT_SUCCEEDED -> markPaid(event.orderId(), event.paymentId());
+            case PaymentEvent.PAYMENT_FAILED -> cancelOnPaymentFailure(event.orderId(), event.failureReason());
             case PaymentEvent.PAYMENT_REFUNDED -> onRefunded(event);
             // Новый тип исхода, которого эта версия не знает. Пропустить его безопасно:
             // сага от него не зависит, а падение отправило бы его в DLT без пользы.
@@ -168,31 +190,50 @@ public class PaymentSaga {
         log.info("Заказ отменён по таймауту оплаты: orderId={}, status={}", order.orderId(), order.status());
     }
 
-    private void onSucceeded(PaymentEvent event) {
+    /**
+     * Таймаут из процесса Camunda. Действует, только если заказ всё ещё ждёт исхода: таймер мог
+     * сработать у процесса, чья транзакция запроса оплаты откатилась, или опередить отмену.
+     */
+    @Transactional
+    public void expireIfAwaiting(Long orderId, Duration timeout) {
+        OrderAccess order = orderStatusService.requireAccess(orderId);
+
+        if (order.status() != OrderStatus.PAYMENT_PENDING) {
+            log.info("Таймаут оплаты пропущен: заказ уже не ждёт исхода, orderId={}, status={}",
+                    orderId, order.status());
+            return;
+        }
+
+        expire(order, timeout);
+    }
+
+    @Transactional
+    public void markPaid(Long orderId, Long paymentId) {
         boolean paid = orderStatusService.tryTransition(
-                event.orderId(),
+                orderId,
                 OrderStatus.PAYMENT_PENDING,
                 OrderStatus.PAID,
                 OrderEventType.ORDER_PAID,
-                "Оплата прошла: paymentId=" + event.paymentId()
+                "Оплата прошла: paymentId=" + paymentId
         );
 
         if (!paid) {
             log.info("Оплата пришла к заказу не в статусе PAYMENT_PENDING — заказ отменён раньше, "
                             + "возврат уже запрошен: orderId={}, status={}",
-                    event.orderId(), orderStatusService.requireAccess(event.orderId()).status());
+                    orderId, orderStatusService.requireAccess(orderId).status());
         }
     }
 
-    private void onFailed(PaymentEvent event) {
+    @Transactional
+    public void cancelOnPaymentFailure(Long orderId, String failureReason) {
         orderStatusService.recordEvent(
-                event.orderId(),
+                orderId,
                 OrderEventType.ORDER_PAYMENT_FAILED,
-                "Оплата не прошла: " + event.failureReason()
+                "Оплата не прошла: " + failureReason
         );
 
         orderStatusService.tryTransition(
-                event.orderId(),
+                orderId,
                 OrderStatus.PAYMENT_PENDING,
                 OrderStatus.CANCELED,
                 OrderEventType.ORDER_CANCELED,
