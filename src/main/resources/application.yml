@@ -106,6 +106,19 @@ app:
     # нужно включить клиент: CAMUNDA_CLIENT_ENABLED=true.
     engine: ${SAGA_ENGINE:native}
 
+  ledger:
+    # Журнал аудита, заверенный в блокчейне (пакет ledger): Merkle-корни пачек audit_log
+    # в контракте AuditAnchor. Узел — Anvil из профиля chain стека платформы.
+    enabled: ${LEDGER_ENABLED:false}
+    rpc-url: ${LEDGER_RPC_URL:http://localhost:8545}
+    # Счёт, от имени которого пишутся корни; пусто — первый разблокированный счёт узла.
+    from: ${LEDGER_FROM:}
+    anchor-interval: ${LEDGER_ANCHOR_INTERVAL:PT5M}
+    # Сколько записи «отстояться» перед заверением: id выдаётся до коммита, и соседняя запись
+    # с меньшим id может закоммититься позже.
+    settle-delay: ${LEDGER_SETTLE_DELAY:PT30S}
+    max-batch: ${LEDGER_MAX_BATCH:500}
+
   live:
     # Живые обновления: SSE заказа и доски ресторана, long polling свободных доставок.
     # Сигналы между экземплярами — LISTEN/NOTIFY PostgreSQL (см. LiveSignals).
